@@ -78,11 +78,11 @@ const DIFFERENCES: { title: string; text: string }[] = [
   },
   {
     title: "Rules enforced by the program",
-    text: "The operator's keeper can trigger each step. It cannot choose amounts, prices or destinations, and it cannot withdraw.",
+    text: "No operator runs the market and no key triggers it. The steps that sell tax and adjust the position are open to anyone, and the program fixes every amount, price and destination. Whoever sends one receives nothing.",
   },
   {
-    title: "Transfers maintain the position",
-    text: "A Token-2022 transfer hook nudges the vault to rebalance as the token is traded, so ordinary trading keeps the position in its band. This is part of the design and still in development.",
+    title: "Trades maintain the position",
+    text: "The token takes its tax itself on every transfer, using Token-2022's transfer fee. Every trade made on Terp also carries the steps that sell collected tax and keep the position in its band, so trading is what runs the market. Anyone can send the same steps. Still in development.",
   },
 ];
 
@@ -154,7 +154,7 @@ export default function LandingPage() {
                 </li>
               ))}
             </ol>
-            <p className="loop">The next transfer starts it again.</p>
+            <p className="loop">The next trade starts it again.</p>
           </div>
         </section>
 

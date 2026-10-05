@@ -18,7 +18,7 @@ import type { AsyncState } from "@/hooks/useAsync";
 import { useBalances, useLiquidityLock, useMarket, useTokenMeta } from "@/hooks/useChain";
 import { useVaultState } from "@/hooks/useVaultState";
 import type { Market } from "@/lib/chain";
-import { describeKeeperFee, describePolicy, formatAtoms, formatBps, formatMandate, formatPercent, formatPrice, formatUsd, shortKey } from "@/lib/format";
+import { describePlatformFee, describePolicy, formatAtoms, formatBps, formatMandate, formatPercent, formatPrice, formatUsd, shortKey } from "@/lib/format";
 
 const POLL_MS = 10_000;
 /** The lock status needs a `getProgramAccounts` call, so it is refreshed less often. */
@@ -168,10 +168,10 @@ function TokenDetail({ mint }: { mint: PublicKey }) {
       </dl>
       <p className="muted small">
         Tax tokens from every transfer of {symbol} go to this token&apos;s own vault. The vault sells them in the{" "}
-        {symbol} pool for USDC. {describeKeeperFee(state.launch.keeperFeeBps)} The vault deposits its USDC on Phoenix
-        and holds a {state.launch.symbol} {state.launch.direction}. {describePolicy(state.launch)} The Terp keeper decides when tax is sold and deployed
-        and cannot withdraw anything; the program fixes sizes, prices and destinations. Holders can redeem for a share
-        of the vault whether or not the keeper is online.
+        {symbol} pool for USDC. {describePlatformFee(state.launch.platformFeeBps)} The vault deposits its USDC on Phoenix
+        and holds a {state.launch.symbol} {state.launch.direction}. {describePolicy(state.launch)} Nobody operates the vault: selling tax and
+        rebalancing are open to any wallet and travel with trades made here, and the program fixes sizes, prices and
+        destinations. Holders can redeem for a share of the vault whether or not anyone is trading.
       </p>
       {meta.data?.description && <p className="lead">{meta.data.description}</p>}
       {vault.error && (
@@ -184,7 +184,7 @@ function TokenDetail({ mint }: { mint: PublicKey }) {
 
       <div className="columns">
         <div>
-          <TradePanel launch={state.launch} symbol={symbol} market={market} balances={balances} onDone={refresh} />
+          <TradePanel state={state} symbol={symbol} market={market} balances={balances} onDone={refresh} />
           <RedemptionPanel state={state} symbol={symbol} balances={balances} onDone={refresh} />
         </div>
         <div>

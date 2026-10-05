@@ -133,7 +133,7 @@ export function RedemptionPanel({ state, symbol, balances, onDone }: Props) {
         ["Still owed afterwards", formatUsd(owed - payable, 6)],
       ],
       notes: [
-        "Pays as much of the claim as the vault's idle USDC covers. Any wallet can send this transaction, with or without the keeper; the money can only go to the claim's owner.",
+        "Pays as much of the claim as the vault's idle USDC covers. Any wallet can send this transaction; the money can only go to the claim's owner.",
       ],
       build: async () => ({ instructions: await client.payClaimIxs(publicKey, launch, publicKey) }),
     });

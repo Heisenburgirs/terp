@@ -31,12 +31,15 @@ fn one_keeper_transaction_turns_tax_into_a_position_and_a_holder_redeems_in_one(
     // collect: withheld tokens moved to the vault's tax account; nothing minted or burned
     assert_eq!(collected.tokens, 18_000 * TOKEN);
     assert_eq!(ctx.supply(&keys.mint), SUPPLY);
-    // convert: the platform's 3% keeper fee went to the treasury, the rest to the vault; the
+    // convert: the platform's 3% platform fee went to the treasury, the rest to the vault; the
     // keeper key itself received nothing
-    let fee = keeper_fee(pool_paid);
+    let fee = platform_fee(pool_paid);
     let revenue = pool_paid - fee;
     assert_eq!(converted.tokens_in, 18_000 * TOKEN);
-    assert_eq!((converted.usdc_out, converted.keeper_fee), (pool_paid, fee));
+    assert_eq!(
+        (converted.usdc_out, converted.platform_fee),
+        (pool_paid, fee)
+    );
     assert_eq!(ctx.balance(&ctx.usdc_ata(&ctx.treasury)), fee);
     assert_eq!(ctx.balance(&ctx.usdc_ata(&ctx.keeper)), 0);
     // deploy: all of the vault's share became collateral, and a 5x long was opened against it
@@ -54,7 +57,7 @@ fn one_keeper_transaction_turns_tax_into_a_position_and_a_holder_redeems_in_one(
     assert_eq!(perp.base_lots, deployed.filled_base_lots as i64);
     let launch = ctx.launch(&keys);
     assert_eq!(launch.usdc_converted, revenue);
-    assert_eq!(launch.keeper_fees_paid, fee);
+    assert_eq!(launch.platform_fees_paid, fee);
     assert_eq!(launch.usdc_deposited, revenue);
 
     // Alice burns 50k tokens. The vault is fully deployed, so her own transaction closes her

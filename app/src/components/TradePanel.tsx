@@ -1,31 +1,54 @@
 "use client";
 
 import { calculateTransferFeeIncludedAmount } from "@meteora-ag/dlmm";
-import { useWallet } from "@solana/wallet-adapter-react";
-import { SLOT_MS, USDC_DECIMALS, USDC_MINT, math, type Launch } from "@terp/sdk";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { SLOT_MS, USDC_DECIMALS, USDC_MINT, math, type VaultState } from "@terp/sdk";
 import BN from "bn.js";
 import { useState } from "react";
 import { useAsync, type AsyncState } from "@/hooks/useAsync";
-import { useSendTx } from "@/hooks/useSendTx";
+import { useClient, useProtocol } from "@/hooks/useClient";
+import { loadLookupTable, useSendTx } from "@/hooks/useSendTx";
 import type { Balances, Market } from "@/lib/chain";
-import { formatActivation, formatAtoms, formatBps, formatPrice, parseAtoms } from "@/lib/format";
+import { formatActivation, formatAtoms, formatBps, formatLeverage, formatPrice, formatUsd, parseAtoms } from "@/lib/format";
+import { UPKEEP_SCANNED_SOURCES, fitUpkeep, planUpkeep, type UpkeepStep } from "@/lib/upkeep";
 import { Notice, Panel, Rows } from "./ui";
 
 const toBig = (value: BN) => BigInt(value.toString());
 
+/** The scan for token accounts holding withheld tax is a heavy RPC call, so it runs this seldom. */
+const WITHHELD_SCAN_MS = 60_000;
+
+const STEP_NAMES: Record<UpkeepStep["kind"], string> = {
+  convert: "the tax sale",
+  collect: "the tax sweep",
+  rebalance: "the rebalance",
+};
+
 interface Props {
-  launch: Launch;
+  /** The vault as last read by the page: decides which upkeep a trade carries. */
+  state: VaultState;
   symbol: string;
   market: AsyncState<Market>;
   balances: AsyncState<Balances>;
   onDone: () => void;
 }
 
-export function TradePanel({ launch, symbol, market, balances, onDone }: Props) {
+export function TradePanel({ state, symbol, market, balances, onDone }: Props) {
+  const { launch } = state;
   const { publicKey } = useWallet();
+  const { connection } = useConnection();
+  const client = useClient();
+  const protocol = useProtocol();
   const sendTx = useSendTx();
   // set once a trade of this session has confirmed; only ever a note, nothing is sent
   const [traded, setTraded] = useState(false);
+  // Token accounts holding withheld tax, for the sweep a trade carries. Only read while a wallet
+  // is connected; a failed scan just means the trade sweeps the accounts its own swap touches.
+  const withheld = useAsync(
+    () => client.findWithheld(launch.mint, UPKEEP_SCANNED_SOURCES),
+    publicKey && launch.pool ? `withheld:${launch.mint.toBase58()}` : null,
+    WITHHELD_SCAN_MS,
+  );
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [amountText, setAmountText] = useState("");
   const [slippageText, setSlippageText] = useState("1");
@@ -94,7 +117,52 @@ export function TradePanel({ launch, symbol, market, balances, onDone }: Props) 
           user: publicKey,
           binArraysPubkey: quote.binArraysPubkey,
         });
-        return { instructions: transaction.instructions };
+        const trade = transaction.instructions;
+        // Vault upkeep rides along after the swap when there is work and it can be shown to
+        // succeed. Whatever goes wrong while preparing it, the plain swap is what is reviewed.
+        try {
+          if (protocol.status !== "ready") return { instructions: trade };
+          const steps = await planUpkeep({
+            client,
+            market: market.data!,
+            state,
+            paused: protocol.config.paused,
+            treasury: protocol.config.treasury,
+            payer: publicKey,
+            scanned: (withheld.data ?? []).map((found) => found.account),
+            tokens: (atoms) => `${formatAtoms(atoms, launch.decimals)} ${symbol}`,
+            usd: (atoms) => formatUsd(atoms),
+            leverage: formatLeverage,
+          });
+          const table = await loadLookupTable(connection).catch(() => null);
+          const fitted = await fitUpkeep({ connection, payer: publicKey, trade, steps, table });
+          const leftOut = fitted.dropped.map((step) => STEP_NAMES[step.kind]).join(", ");
+          if (fitted.attached.length === 0) {
+            return {
+              instructions: fitted.instructions,
+              notes: leftOut
+                ? [
+                    `Vault upkeep (${leftOut}) was ready but is not part of this transaction: together with your swap it did not pass simulation, did not fit in one transaction, or needed too much compute. Your swap goes on its own and is not affected.`,
+                  ]
+                : [],
+            };
+          }
+          const sells = fitted.attached.some((step) => step.kind === "convert");
+          return {
+            instructions: fitted.instructions,
+            computeUnits: fitted.computeUnits,
+            rows: fitted.attached.map((step): [string, string] => [step.label, step.detail]),
+            notes: [
+              `After your swap, this transaction also carries the upkeep of this token's vault listed above. Any wallet may send these steps; on Terp they travel with trades instead of being sent by an operator. They cost you nothing except a slightly higher network fee, and none of the proceeds go to you: the program fixes every amount, price and destination, and what they move stays with the vault${sells ? `, except the ${formatBps(launch.platformFeeBps)} platform fee on the tax sale, which goes to the platform` : ""}. Your swap comes first and its amounts are the ones shown above.`,
+              sells
+                ? "The swap and the upkeep were simulated together and succeed as of now. They succeed or fail as one transaction: if the vault changes before it lands, for example someone else sells the same tax batch first, the transaction fails, your swap is not made and nothing but the network fee is spent. Review again to retry."
+                : "The swap and the upkeep were simulated together and succeed as of now. They succeed or fail as one transaction.",
+              ...(leftOut ? [`Left out because it did not pass simulation or did not fit: ${leftOut}.`] : []),
+            ],
+          };
+        } catch {
+          return { instructions: trade };
+        }
       },
     });
     if (signature) {
@@ -193,9 +261,15 @@ export function TradePanel({ launch, symbol, market, balances, onDone }: Props) 
       <p className="muted small">
         Every transfer of this token pays its permanent {formatBps(launch.transferFeeBps)} Token-2022 transfer tax,
         buys and sells included. The quote comes from the Meteora SDK, which already deducts the tax; it is shown above
-        so you can see it. The withheld tokens go to this token&apos;s vault, not to the creator or an operator
-        wallet. When the vault sells them, {formatBps(launch.keeperFeeBps)} of the USDC is paid to the platform as the
-        keeper fee and the rest stays in the vault.
+        so you can see it. The withheld tokens go to this token&apos;s vault, not to the creator or the platform. When the vault sells
+        them, {formatBps(launch.platformFeeBps)} of the USDC is paid to the platform as the platform fee and the rest
+        stays in the vault.
+      </p>
+      <p className="muted small">
+        Nobody operates the vault. A trade made here also carries the vault&apos;s upkeep when there is any: sweeping
+        withheld tax, selling a tax batch, and rebalancing the position. The review lists exactly what your transaction
+        carries. It adds a little to the network fee, pays you nothing, and is left out whenever it would not succeed
+        together with your swap.
       </p>
 
       {data && (
@@ -212,8 +286,8 @@ export function TradePanel({ launch, symbol, market, balances, onDone }: Props) 
 
       {traded && (
         <p className="muted small">
-          The tax withheld from this trade will be swept, sold and deployed by the Terp keeper. There is nothing for
-          you to click.
+          The tax from this trade is swept, sold and put into the vault&apos;s position by the trades that follow on
+          Terp, or by anyone who sends those steps. There is nothing for you to click.
         </p>
       )}
     </Panel>

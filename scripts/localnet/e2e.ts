@@ -5,17 +5,26 @@
  *   1. config and market listing
  *   2. a transfer-tax mint and its launch
  *   3. a DLMM pool seeded with TOKENS ONLY, as positions owned by the launch vault and locked
- *   4. a buy, the tax it leaves behind, the sweep, and the keeper's sale through the real pool
+ *   4. a buy, the tax it leaves behind, then the sweep and the sale through the real pool, both
+ *      sent by a wallet with no role (the crank), and a `rebalance` sent by the buyer
  *   5. attempts by the creator to take the liquidity back
  *
  * It refuses to run against mainnet. USDC here is a MOCK mint the test can print.
  */
 import {
   DLMM_PROGRAM_ID,
+  EMBER_PROGRAM_ID,
+  EMBER_STATE,
+  EMBER_VAULT,
+  HAWKEYE_PROGRAM_ID,
+  PHOENIX_GLOBAL_CONFIG,
+  PHOENIX_LOG_AUTHORITY,
+  PHOENIX_PROGRAM_ID,
   SOL_MARKET,
   TerpClient,
   USDC_MINT,
   buildCreateMintIxs,
+  configPda,
   createUsdcAccountIx,
   launchAddresses,
   launchPda,
@@ -121,12 +130,55 @@ async function mustFail(label: string, run: () => Promise<unknown>): Promise<boo
   return false;
 }
 
+/**
+ * `rebalance` for this local validator. `client.rebalanceIx` reads Phoenix's global
+ * configuration to find the exchange's accounts, and that account is not cloned here (only the
+ * SOL orderbook and spline are). The program pins the Phoenix and Ember program accounts by
+ * address and checks the rest only once the launch has a trader account, which this launch
+ * does not, so the unpinned accounts are stand-ins that the program is expected never to read.
+ * On a cluster with Phoenix, use `client.rebalanceIx`.
+ */
+function localRebalanceIx(caller: PublicKey, launch: { address: PublicKey; orderbook: PublicKey; spline: PublicKey; vaultUsdc: PublicKey }) {
+  const standIn = () => Keypair.generate().publicKey;
+  return (client.program.methods as any)
+    .rebalance()
+    .accountsStrict({
+      caller,
+      config: configPda(),
+      launch: launch.address,
+      phoenix: {
+        phoenixProgram: PHOENIX_PROGRAM_ID,
+        logAuthority: PHOENIX_LOG_AUTHORITY,
+        globalConfig: PHOENIX_GLOBAL_CONFIG,
+        traderAccount: standIn(),
+        perpAssetMap: standIn(),
+        orderbook: launch.orderbook,
+        spline: launch.spline,
+        globalVault: standIn(),
+        withdrawQueue: standIn(),
+        hawkeyeProgram: HAWKEYE_PROGRAM_ID,
+      },
+      ember: {
+        emberProgram: EMBER_PROGRAM_ID,
+        emberState: EMBER_STATE,
+        emberVault: EMBER_VAULT,
+        usdcMint: USDC_MINT,
+        canonicalMint: standIn(),
+        vaultUsdc: launch.vaultUsdc,
+        canonicalAccount: standIn(),
+        tokenProgram: TOKEN_PROGRAM_ID,
+      },
+    })
+    .instruction() as Promise<TransactionInstruction>;
+}
+
 const tokenBalance = async (account: PublicKey, programId = TOKEN_2022_PROGRAM_ID) =>
   (await getAccount(connection, account, "confirmed", programId)).amount;
 
 async function main() {
   if ((await connection.getGenesisHash()) === MAINNET_GENESIS) throw new Error("this is mainnet; the local e2e never runs there");
-  const [admin, keeper, treasury, creator, buyer, usdcAuthority] = [
+  // `crank` is a wallet with no role on-chain; its key file keeps its old name, "keeper"
+  const [admin, crank, treasury, creator, buyer, usdcAuthority] = [
     "admin",
     "keeper",
     "treasury",
@@ -134,19 +186,18 @@ async function main() {
     "buyer",
     "usdc-authority",
   ].map(loadLocalKey);
-  for (const key of [admin, keeper, creator, buyer, usdcAuthority]) {
+  for (const key of [admin, crank, creator, buyer, usdcAuthority]) {
     const signature = await connection.requestAirdrop(key.publicKey, 100 * LAMPORTS_PER_SOL);
     await connection.confirmTransaction(signature, "confirmed");
   }
 
   console.log("1. protocol config and market");
   if (!(await client.fetchConfig())) {
-    await send("init_config (keeper fee 3%, swap program = real DLMM)", admin, [
+    await send("init_config (platform fee 3%, swap program = real DLMM)", admin, [
       createUsdcAccountIx(admin.publicKey, treasury.publicKey),
       await client.initConfigIx(admin.publicKey, {
-        keeper: keeper.publicKey,
         treasury: treasury.publicKey,
-        keeperFeeBps: 300,
+        platformFeeBps: 300,
         swapProgram: DLMM_PROGRAM_ID,
         swapDiscriminators: [sighash("swap"), sighash("swap2")],
       }),
@@ -281,7 +332,7 @@ async function main() {
   }
   console.log(`  creator still holds ${(await tokenBalance(tokenAta(creator.publicKey, mint))) / TOKEN} tokens`);
 
-  console.log("4. a buy, its tax, and the keeper's sale through the real pool");
+  console.log("4. a buy, its tax, and its sale through the real pool by a wallet with no role (the crank)");
   while ((await connection.getSlot("confirmed")) <= activationPoint.toNumber()) {
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
@@ -310,7 +361,9 @@ async function main() {
 
   const launch = (await client.fetchLaunch(mint))!;
   const sources = await client.findWithheldAccounts(mint);
-  await send(`collect_tax from ${sources.length} account(s)`, keeper, [await client.collectTaxIx(keeper.publicKey, launch, sources)]);
+  await send(`collect_tax from ${sources.length} account(s), sent by the crank`, crank, [
+    await client.collectTaxIx(crank.publicKey, launch, sources),
+  ]);
   const taxTokens = await tokenBalance(launch.taxAccount);
   console.log(`  vault tax account holds ${taxTokens / TOKEN} tokens`);
 
@@ -330,15 +383,28 @@ async function main() {
   });
   const swapIx = (sell.instructions as TransactionInstruction[]).filter((ix) => ix.programId.equals(DLMM_PROGRAM_ID));
   if (swapIx.length !== 1) throw new Error(`expected one DLMM instruction, got ${swapIx.length}`);
-  await send(`convert_tax: sell ${batch / TOKEN} tokens through DLMM`, keeper, [
-    await client.convertTaxIx(keeper.publicKey, launch, batch, swapIx[0], treasury.publicKey),
+  await send(`convert_tax: sell ${batch / TOKEN} tokens through DLMM, sent by the crank`, crank, [
+    await client.convertTaxIx(crank.publicKey, launch, batch, swapIx[0], treasury.publicKey),
   ]);
   const vaultUsdc = await getAccount(connection, launch.vaultUsdc);
   const treasuryUsdc = await getAccount(connection, usdcAta(treasury.publicKey));
   console.log(
     `  vault received ${Number(vaultUsdc.amount) / 1e6} USDC, treasury ${Number(treasuryUsdc.amount) / 1e6} USDC ` +
-      `(${((Number(treasuryUsdc.amount) * 100) / Number(vaultUsdc.amount + treasuryUsdc.amount)).toFixed(2)}% keeper fee); pool quote was ${Number(sellQuote.outAmount) / 1e6}`,
+      `(${((Number(treasuryUsdc.amount) * 100) / Number(vaultUsdc.amount + treasuryUsdc.amount)).toFixed(2)}% platform fee); pool quote was ${Number(sellQuote.outAmount) / 1e6}`,
   );
+
+  // This launch has no Phoenix trader account, so `rebalance` has nothing it can do. It must
+  // still succeed, because it is built to ride along in trades. A failure here is a real finding:
+  // `send` throws with the simulation error, the program logs are printed, and the run stops.
+  const vaultBeforeRebalance = (await getAccount(connection, launch.vaultUsdc)).amount;
+  await send("rebalance sent by the buyer (no Phoenix trader here, so it must succeed doing nothing)", buyer, [
+    await localRebalanceIx(buyer.publicKey, launch),
+  ]);
+  const vaultAfterRebalance = (await getAccount(connection, launch.vaultUsdc)).amount;
+  if (vaultAfterRebalance !== vaultBeforeRebalance) {
+    throw new Error(`rebalance moved vault USDC with no trader registered: ${vaultBeforeRebalance} -> ${vaultAfterRebalance}`);
+  }
+  console.log("  rebalance succeeded and changed nothing: the vault's idle USDC is untouched");
 
   console.log("5. can the creator take the liquidity back?");
   dlmm = await DLMM.create(connection, pool);

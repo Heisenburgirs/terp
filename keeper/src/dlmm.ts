@@ -2,8 +2,8 @@
  * Builds the Meteora DLMM swap that sells tax tokens for USDC.
  *
  * The swap is built for `user` = the launch's tax authority (a PDA), so its token accounts are
- * that PDA's: tax tokens in, USDC out. The keeper never signs the swap itself; `convert_tax`
- * signs for the PDA on-chain and forwards the USDC to the vault.
+ * that PDA's: tax tokens in, USDC out. Whoever sends `convert_tax` never signs the swap itself;
+ * the program signs for the PDA on-chain and forwards the USDC to the vault.
  */
 import { DLMM_PROGRAM_ID, USDC_MINT, type Launch } from "@terp/sdk";
 import BN from "bn.js";

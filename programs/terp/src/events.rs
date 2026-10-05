@@ -36,8 +36,8 @@ pub struct TaxConverted {
     pub tokens_in: u64,
     /// What the pool paid.
     pub usdc_out: u64,
-    /// The platform's keeper fee, paid to the treasury; the rest went to the vault.
-    pub keeper_fee: u64,
+    /// The platform's platform fee, paid to the treasury; the rest went to the vault.
+    pub platform_fee: u64,
     /// USDC atoms per token atom, scaled by 1e12.
     pub price: u128,
 }

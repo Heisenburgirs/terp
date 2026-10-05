@@ -166,7 +166,7 @@ async function main() {
     else {
       pass(
         "config",
-        `admin ${config.admin.toBase58()}, keeper ${config.keeper.toBase58()}, treasury ${config.treasury.toBase58()}, keeper fee ${config.keeperFeeBps / 100}%`,
+        `admin ${config.admin.toBase58()}, treasury ${config.treasury.toBase58()}, platform fee ${config.platformFeeBps / 100}%`,
       );
       config.swapProgram.equals(DLMM_PROGRAM_ID) ? pass("swap program is Meteora DLMM") : fail("swap program is not Meteora DLMM");
       note("paused", String(config.paused));

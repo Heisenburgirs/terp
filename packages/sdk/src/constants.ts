@@ -42,8 +42,8 @@ export const MIN_LEVERAGE_BPS = 47_500;
 export const MAX_LEVERAGE_BPS = 60_000;
 /** What a deleverage reduces leverage to. */
 export const DELEVERAGE_TO_BPS = 55_000;
-/** Highest share of converted tax the platform may take as its keeper fee. */
-export const MAX_KEEPER_FEE_BPS = 2_000;
+/** Highest platform fee the admin may set: the platform's share of the USDC from each tax sale. */
+export const MAX_PLATFORM_FEE_BPS = 2_000;
 export const EXIT_COST_BPS = 5;
 export const ORDER_SLIPPAGE_BPS = 50;
 /** Solana slots are roughly 0.4s. */

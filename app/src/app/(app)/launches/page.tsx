@@ -104,15 +104,15 @@ export default function HomePage() {
       <h1>{TAGLINE}</h1>
       <p className="lead">
         Terp is a launchpad for fixed-supply Token-2022 tokens with a transfer tax of 1% or 3%, chosen by the creator
-        at launch and permanent. The tax tokens do not go to a creator or an operator wallet. They go to an on-chain vault
-        that belongs to that token alone; when they are sold, the platform takes a fixed keeper fee and the vault keeps the rest.
+        at launch and permanent. The tax tokens do not go to a creator or a platform wallet. They go to an on-chain vault
+        that belongs to that token alone; when they are sold, the platform takes a fixed platform fee and the vault keeps the rest.
       </p>
       <HowItWorks />
       <p className="lead" style={{ marginTop: 16 }}>
-        The Terp keeper, the launchpad operator&apos;s key, decides when tax is swept, sold and deployed; the program
-        fixes the batch size, the price floor, the order and where the money goes, and the keeper cannot withdraw
-        anything. Holders can burn tokens for a proportional share of the vault&apos;s net equity at any time, with or
-        without the keeper. Market price and redemption value are different numbers.{" "}
+        No operator runs the vaults. Sweeping tax, selling it and rebalancing the position are open to any wallet and
+        travel with trades made on Terp; the program fixes the batch size, the price floor, the order and where the
+        money goes, and nobody who sends a step can withdraw anything. Holders can burn tokens for a proportional
+        share of the vault&apos;s net equity at any time, whether or not anyone is trading. Market price and redemption value are different numbers.{" "}
         <strong>Neither principal nor yield is guaranteed</strong>: a leveraged position can be liquidated and the
         backing lost.
       </p>

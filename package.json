@@ -6,7 +6,7 @@
     "build:sdk": "pnpm --filter @terp/sdk build",
     "test:sdk": "pnpm --filter @terp/sdk test",
     "typecheck": "pnpm -r typecheck",
-    "keeper": "pnpm --filter @terp/keeper start",
+    "crank": "pnpm --filter @terp/keeper start",
     "dev": "pnpm --filter @terp/app dev"
   },
   "pnpm": {

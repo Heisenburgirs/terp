@@ -94,7 +94,7 @@ export function LiquidityPanel({ launch, symbol, market, lock, onDone }: Props) 
       ],
       notes: [
         "Meteora pays a position's fees only to its fee owner, which for these positions is the vault. A claim naming any other account is rejected by the DLMM program, and only the positions' operator (this wallet) can send one.",
-        "Claimed USDC becomes idle USDC of the vault, so it counts in vault equity and is deployed by the keeper like converted tax. No keeper fee is taken from it.",
+        "Claimed USDC becomes idle USDC of the vault, so it counts in vault equity and is deposited by the next rebalance like converted tax. No platform fee is taken from it.",
       ],
       build: () => buildClaimFees({ dlmm: pool.dlmm, positions: data.positions, sender: publicKey, vaultUsdc: launch.vaultUsdc }),
     });

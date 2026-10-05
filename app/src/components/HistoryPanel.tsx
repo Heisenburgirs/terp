@@ -39,11 +39,11 @@ function describe(entry: HistoryEntry, launch: Launch, symbol: string): [title: 
     case "taxConverted": {
       // the program's price is USDC atoms per token atom x 1e12
       const perToken = (Number(int("price")) / Number(math.PRICE_SCALE)) * 10 ** (launch.decimals - USDC_DECIMALS);
-      const toVault = int("usdc_out") - int("keeper_fee");
+      const toVault = int("usdc_out") - int("platform_fee");
       return [
         "Tax converted",
         `${tokens("tokens_in")} sold; the pool paid ${usd("usdc_out")} (${formatPrice(perToken)} per token): ` +
-          `${usd("keeper_fee")} keeper fee to the platform, ${formatUsd(toVault, 6)} to the vault`,
+          `${usd("platform_fee")} platform fee, ${formatUsd(toVault, 6)} to the vault`,
       ];
     }
     case "deployed": {

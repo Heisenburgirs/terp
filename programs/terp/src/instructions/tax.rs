@@ -105,8 +105,8 @@ pub fn collect_tax<'info>(ctx: Context<'info, CollectTax<'info>>) -> Result<()> 
 
 #[derive(Accounts)]
 pub struct ConvertTax<'info> {
-    pub keeper: Signer<'info>,
-    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = keeper @ VaultError::Unauthorized)]
+    pub caller: Signer<'info>,
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, ProtocolConfig>,
     #[account(
         mut,
@@ -126,7 +126,7 @@ pub struct ConvertTax<'info> {
     pub tax_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut)]
     pub vault_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
-    /// The platform treasury's USDC account, for the keeper fee.
+    /// The platform treasury's USDC account, for the platform fee.
     #[account(mut, token::mint = usdc_mint, token::authority = config.treasury)]
     pub treasury_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(address = USDC_MINT)]
@@ -139,8 +139,8 @@ pub struct ConvertTax<'info> {
 
 /// Sells one batch of tax tokens for USDC through the launch's pool. Keeper only.
 ///
-/// The keeper supplies the AMM's swap instruction (accounts in `remaining_accounts`, data in
-/// `swap_data`), but the program does not rely on the keeper being honest or careful:
+/// Open to anyone. The caller supplies the AMM's swap instruction (accounts in `remaining_accounts`, data in
+/// `swap_data`), but the program does not rely on the caller being honest or careful:
 ///
 /// - the batch size is fixed by the program: the tax balance, capped at `max_convert_tokens`,
 ///   and only once it has reached `min_convert_tokens` and the cooldown has passed;
@@ -148,9 +148,9 @@ pub struct ConvertTax<'info> {
 /// - the sale must realize at least the reference price less `max_price_drop_bps` per cooldown
 ///   period elapsed. The reference starts at the pool's launch price and follows a running
 ///   average of conversions;
-/// - the pool's proceeds are split in this instruction: the launch's fixed keeper fee to the
+/// - the pool's proceeds are split in this instruction: the launch's fixed platform fee to the
 ///   platform treasury, everything else to the launch's vault. Neither destination is the
-///   keeper's to choose.
+///   caller's to choose.
 pub fn convert_tax<'info>(
     ctx: Context<'info, ConvertTax<'info>>,
     tokens_in: u64,
@@ -248,11 +248,11 @@ pub fn convert_tax<'info>(
     );
     require!(price >= floor, VaultError::ConversionPriceTooLow);
 
-    let keeper_fee = math::bps_of(usdc_out, launch.keeper_fee_bps);
-    let to_vault = ctx.accounts.tax_usdc.amount - keeper_fee;
+    let platform_fee = math::bps_of(usdc_out, launch.platform_fee_bps);
+    let to_vault = ctx.accounts.tax_usdc.amount - platform_fee;
     let decimals = ctx.accounts.usdc_mint.decimals;
     for (to, amount) in [
-        (ctx.accounts.treasury_usdc.to_account_info(), keeper_fee),
+        (ctx.accounts.treasury_usdc.to_account_info(), platform_fee),
         (ctx.accounts.vault_usdc.to_account_info(), to_vault),
     ] {
         if amount == 0 {
@@ -285,15 +285,15 @@ pub fn convert_tax<'info>(
         .usdc_converted
         .checked_add(to_vault)
         .ok_or(VaultError::MathOverflow)?;
-    launch.keeper_fees_paid = launch
-        .keeper_fees_paid
-        .checked_add(keeper_fee)
+    launch.platform_fees_paid = launch
+        .platform_fees_paid
+        .checked_add(platform_fee)
         .ok_or(VaultError::MathOverflow)?;
     emit!(TaxConverted {
         launch: launch_key,
         tokens_in: spent,
         usdc_out,
-        keeper_fee,
+        platform_fee,
         price,
     });
     Ok(())

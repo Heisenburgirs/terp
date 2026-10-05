@@ -195,7 +195,18 @@ pub struct TraderHeader {
     pub withdraw_queue_node: u32,
 }
 
+/// Trader capability flags Phoenix sets when it onboards an account.
+const CAN_PLACE_MARKET: u32 = 1 << 2;
+const CAN_DEPOSIT: u32 = 1 << 4;
+const CAN_WITHDRAW: u32 = 1 << 5;
+
 impl TraderHeader {
+    /// Phoenix has enabled market orders, deposits and withdrawals for this trader.
+    pub fn is_onboarded(&self) -> bool {
+        let ready = CAN_PLACE_MARKET | CAN_DEPOSIT | CAN_WITHDRAW;
+        self.flags & ready == ready
+    }
+
     pub fn load(trader_account: &AccountInfo) -> Result<Self> {
         check_phoenix_account(trader_account, account::TRADER, 240)?;
         let data = trader_account.try_borrow_data()?;

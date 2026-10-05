@@ -14,8 +14,9 @@ The product is buildable on mainnet as specified, with four things to know up fr
    the unpaid part becomes a fixed claim that is paid when the USDC arrives.
 2. **A token transfer cannot send its tax to the vault by itself.** Token-2022 withholds the tax
    inside the recipient's token account, and a transfer hook cannot move it (see below). The tax
-   is swept by a `collect_tax` instruction. The operator's keeper sends sweep, sale and deployment
-   as one transaction, so in practice it is one step that follows the trades.
+   is swept by a `collect_tax` instruction, sold by `convert_tax` and put into the position by
+   `rebalance`. All three are open to any wallet. Terp's frontend attaches them to users' trades,
+   and an open bot covers tokens nobody trades there, so no operator is needed.
 3. **Each launch depends on Phoenix's onboarding API once.** A program can create a Phoenix trader
    account for a PDA by CPI, but the account has no capabilities until Phoenix's onboarder enables
    them. Phoenix exposes this as a public builder API that explicitly accepts PDA authorities.
@@ -31,6 +32,8 @@ The product is buildable on mainnet as specified, with four things to know up fr
 
 - A Token-2022 mint that uses only `TransferFeeConfig`, `MetadataPointer`, `TokenMetadata` (or a
   `TransferHook` with program and authority revoked) can be used in DLMM without a token badge.
+  A mint with an active hook was tried against the deployed program and refused (see "Why not a
+  transfer hook").
   Source: [DLMM Token 2022 support](https://docs.meteora.ag/core-products/dlmm/token-2022-support).
 - DAMM v2 supports the same set permissionlessly and is the documented alternative:
   [DAMM v2 Token 2022 support](https://docs.meteora.ag/core-products/damm-v2/token-2022-support).
@@ -74,7 +77,7 @@ program, but not mainnet state.
   when it names the vault; the operator's claim into the vault's USDC account succeeds.
 - **`convert_tax` through a real DLMM swap.** A buy leaves withheld tax, `collect_tax` sweeps it,
   and `convert_tax` wraps the SDK's single `swap2` instruction signed by the tax PDA. The
-  proceeds are split 97% to the vault and 3% to the treasury, the configured keeper fee.
+  proceeds are split 97% to the vault and 3% to the treasury, the configured platform fee.
 - **The variable fee is large in a thin pool.** A single 2,000 USDC buy that crossed about 65
   bins paid about 8% in pool fees, against a 1% base fee.
 
@@ -116,25 +119,36 @@ This is Phoenix **perps** ("Eternal"), a different program from the Phoenix v1 s
 
 ## Why not a transfer hook
 
-"The transfer that crosses the threshold opens the position" would need a Token-2022 transfer
-hook. It does not work here:
+"Every transfer of the token maintains the position by itself" would need a Token-2022 transfer
+hook. A hook was built and tested, not just reasoned about; a working prototype is on the git
+branch `transfer-hook`. It does not do the job, for four reasons:
 
-- **Reentrancy.** The hook runs while Token-2022 is executing the transfer, and Solana forbids
-  calling back into a program already on the call stack. The hook therefore cannot move the
-  hooked token at all: it cannot collect withheld fees or sell tax tokens. When the transfer is
-  part of a Meteora swap, Meteora is on the stack too and cannot be called either.
-- **Listing.** DLMM and DAMM v2 accept a hooked mint permissionlessly only when the hook program
-  and authority are both removed. An active hook needs a token badge from Meteora per token.
-- **Failure coupling.** A failed inner call aborts the whole transaction. Any Phoenix rejection
-  (stale mark, paused market, withdrawal queue) would make the token untransferable.
-- **Limits.** Meteora -> Token-2022 -> hook -> Phoenix -> Phoenix's own inner call is at the
-  call-depth limit before an aggregator is added, and each Phoenix view costs several hundred
-  thousand compute units on mainnet.
+- **A hook cannot take or sell the tokens being transferred.** It runs while Token-2022 is in
+  the middle of the transfer, and Solana does not let a program be called again while it is
+  already on the call stack. So a hook cannot collect the withheld tax or sell tax tokens; when
+  the transfer is part of a Meteora swap, Meteora is on the stack too and cannot be called
+  either. The most a hook could do is the Phoenix side.
+- **The Phoenix side does not fit in a hook. Measured.** Token-2022 ran out of memory resolving
+  more than 15 extra accounts for a hook. A deposit plus rebalance needs 22.
+- **Meteora will not open a pool for a mint with an active hook. Verified.** The deployed DLMM
+  binary, on a local validator, rejects pool creation for a transfer-tax mint that also carries
+  an active transfer hook: "Unsupported mint extension" (`scripts/localnet/probe-hook.ts`). Its
+  documentation says the same: a hooked mint is accepted permissionlessly only when the hook
+  program and authority are both removed.
+- **If a hook fails, the user's transfer fails.** Any rejection inside it (a stale mark, a paused
+  market, a full withdrawal queue) would make the token untransferable for as long as it lasts.
 
-What is built instead: the token program withholds the tax on every transfer, as it is designed
-to; `collect_tax` sweeps it into the token's own vault; and the keeper bundles that sweep with
-`convert_tax` and `deploy` in a single transaction once a launch's thresholds are crossed. All
-three are separate instructions of one program, so they compose without any reentrancy.
+What is built instead: the token uses Token-2022's **transfer fee** extension, not a hook, so
+the tax is taken by the token program itself on every transfer on every venue.
+`collect_tax` sweeps it into the token's own vault, `convert_tax` sells it and `rebalance` puts
+the USDC into the position and keeps the position in its band. They are ordinary instructions of
+one program, open to any wallet, and Terp's frontend appends them to users' trades, after the
+user's swap in the same transaction. That gets the property a hook was meant to give (trading
+maintains the position) without the hook's limits: the steps run at the top level of the
+transaction, so they can call Meteora and Phoenix, carry as many accounts as a transaction
+allows, and can be left out when they would fail instead of failing the trade. The difference
+from a hook: only trades made through Terp's site (or a bot, or anyone who sends the steps)
+carry them. A transfer or a trade made elsewhere pays the tax and does nothing more.
 
 ## Atomic redemption or a queue
 
@@ -160,7 +174,7 @@ These need a deployment or a mainnet fork, which were not done because they spen
 your approval:
 
 - The program has not been deployed to mainnet. No mainnet pool, launch or position exists.
-- Total compute units of `deploy`, `deleverage` and `redeem` on mainnet state. Measured view
+- Total compute units of `rebalance`, `deploy`, `deleverage` and `redeem` on mainnet state. Measured view
   costs: `view_margin_for_asset` about 201k, `view_bbo` about 350k. Each of these instructions
   uses two position views, one mark view, one order and at most one withdrawal, so the estimate
   is 750k plus the order and withdrawal, inside the 1.4M limit. The cost of a Phoenix order on
@@ -168,9 +182,22 @@ your approval:
 - That a `redeem` transaction fits in one packet on mainnet. It carries about 36 accounts and
   needs the shared address lookup table (`scripts/create-lookup-table.ts`).
 - `convert_tax` through DLMM **on mainnet**. It was executed against the real DLMM binary on a
-  local validator (above); the Rust test suites still use a mock AMM. Mainnet pool state, and the
-  compute and size of the keeper's combined transaction with a real DLMM swap in it, are not
-  measured.
+  local validator (above); the Rust test suites still use a mock AMM.
+- **A swap with upkeep in one transaction.** The compute and size of a user's DLMM swap followed
+  by `convert_tax` (a second DLMM swap), `collect_tax` and `rebalance` are not measured, on
+  mainnet or locally. What was run locally: a token transfer plus `rebalance` in one transaction
+  against the real Phoenix programs (it fits, on fixture state where views are cheap), and the
+  sweep and the sale as separate transactions against the real DLMM binary. On mainnet the
+  Phoenix views alone are estimated at about 750k compute units, so a swap plus all three steps
+  may not fit under 1.4M. The frontend simulates each trade and leaves out what does not fit,
+  and the crank sends the steps separately if the combined transaction fails; how often trades
+  can actually carry the rebalance is unknown until measured.
+- The `rebalance` step of `scripts/localnet/e2e.ts` (a `rebalance` from the buyer's wallet on a
+  launch with no Phoenix trader, which must succeed doing nothing) was added after the last run
+  and has not been run. The same case is covered by the Rust tests
+  (`it_waits_until_phoenix_has_enabled_the_trader_account`).
+- The frontend's trade panel with upkeep attached, in a browser: building the steps, the
+  simulate-and-drop fallback, and the review. Only compiled.
 - The frontend's create flow in a browser: the multi-transaction seeding through a wallet
   (`signAllTransactions`), resuming it after a reload, the countdown to activation, and the fee
   claim. It builds the same DLMM instructions as the local script but has only been compiled.

@@ -2,22 +2,21 @@ use anchor_lang::prelude::*;
 
 use crate::constants::MAX_SWAP_DISCRIMINATORS;
 
-/// Protocol-wide settings. The admin can rotate itself, the keeper and the treasury, list perp
+/// Protocol-wide settings. The admin can rotate itself and the treasury, list perp
 /// markets launches may choose from, and pause risk-increasing actions. Neither the admin nor
-/// the keeper has a path to any launch's tokens, USDC, collateral or position.
+/// any caller has a path to any launch's tokens, USDC, collateral or position.
 #[account]
 #[derive(InitSpace)]
 pub struct ProtocolConfig {
     pub admin: Pubkey,
     /// The launchpad operator's key: the only one that may convert tax and deploy it. It decides
     /// when; the program decides how much, at what price, and where the money goes.
-    pub keeper: Pubkey,
-    /// The platform's wallet: receives the keeper fee, and residual USDC of a launch whose supply
+    /// The platform's wallet: receives the platform fee, and residual USDC of a launch whose supply
     /// reached zero.
     pub treasury: Pubkey,
     /// Share of converted tax paid to the treasury, applied to launches created from now on.
     /// A launch keeps the rate it was created with.
-    pub keeper_fee_bps: u16,
+    pub platform_fee_bps: u16,
     /// AMM the tax is sold through (Meteora DLMM on mainnet). Immutable.
     pub swap_program: Pubkey,
     /// Instruction discriminators of `swap_program` a conversion may call. Immutable.
@@ -92,8 +91,8 @@ pub struct Launch {
     pub max_leverage_bps: u32,
     /// What a deleverage above the maximum reduces leverage to.
     pub deleverage_to_bps: u32,
-    /// Share of converted tax the platform takes for running the keeper.
-    pub keeper_fee_bps: u16,
+    /// Share of converted tax paid to the platform treasury.
+    pub platform_fee_bps: u16,
     pub redemption_fee_bps: u16,
     pub exit_cost_bps: u16,
     pub order_slippage_bps: u16,
@@ -120,9 +119,9 @@ pub struct Launch {
     // Cumulative accounting, actual amounts only
     pub tokens_collected: u64,
     pub tokens_converted: u64,
-    /// What reached the vault: pool proceeds less the keeper fee.
+    /// What reached the vault: pool proceeds less the platform fee.
     pub usdc_converted: u64,
-    pub keeper_fees_paid: u64,
+    pub platform_fees_paid: u64,
     /// Slot of the last deployment, or of the transfer hook's last look at the position.
     pub last_rebalance_slot: u64,
     pub usdc_deposited: u64,

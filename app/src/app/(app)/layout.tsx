@@ -10,8 +10,9 @@ import "./wallet.css";
 export const metadata: Metadata = {
   description:
     "Terp is a launchpad for fixed-supply Token-2022 tokens with a permanent 1% or 3% transfer tax. " +
-    "The tax goes to the token's own on-chain vault, which sells it for USDC, pays the platform a fixed keeper fee and holds a leveraged long on the asset the creator chose, " +
+    "The tax goes to the token's own on-chain vault, which sells it for USDC, pays the platform a fixed platform fee and holds a leveraged long on the asset the creator chose, " +
     `kept open and close to ${formatLeverage(PROTOCOL_POLICY.targetLeverageBps)}: tax adds collateral, and the position is topped up to ${formatLeverage(PROTOCOL_POLICY.targetLeverageBps)} whenever leverage falls under ${formatLeverage(PROTOCOL_POLICY.minLeverageBps)}. ` +
+    "No operator runs the vaults: upkeep is open to any wallet and travels with trades made on Terp. " +
     "Holders can redeem for a share of the vault. Neither principal nor yield is guaranteed.",
 };
 

@@ -285,36 +285,6 @@ impl<'a, 'info> Venue<'a, 'info> {
     }
 }
 
-/// The accounts that value a launch's position and trade it, without the collateral accounts.
-/// Few enough to ride along in a token transfer, which is what the transfer hook needs.
-#[derive(Accounts)]
-pub struct DeskAccounts<'info> {
-    /// CHECK: address-constrained
-    #[account(address = phoenix::PHOENIX_PROGRAM_ID)]
-    pub phoenix_program: UncheckedAccount<'info>,
-    /// CHECK: address-constrained
-    #[account(address = phoenix::PHOENIX_LOG_AUTHORITY)]
-    pub log_authority: UncheckedAccount<'info>,
-    /// CHECK: address-constrained, parsed in the handler
-    #[account(mut, address = phoenix::PHOENIX_GLOBAL_CONFIG)]
-    pub global_config: UncheckedAccount<'info>,
-    /// CHECK: the launch's own trader account, checked in the handler
-    #[account(mut)]
-    pub trader_account: UncheckedAccount<'info>,
-    /// CHECK: checked against the Phoenix global configuration
-    #[account(mut)]
-    pub perp_asset_map: UncheckedAccount<'info>,
-    /// CHECK: the launch's market, checked in the handler
-    #[account(mut)]
-    pub orderbook: UncheckedAccount<'info>,
-    /// CHECK: the launch's market, checked in the handler
-    #[account(mut)]
-    pub spline: UncheckedAccount<'info>,
-    /// CHECK: address-constrained
-    #[account(address = phoenix::HAWKEYE_PROGRAM_ID)]
-    pub hawkeye_program: UncheckedAccount<'info>,
-}
-
 /// One launch's position on Phoenix: its valuation and its orders.
 pub struct Desk<'a, 'info> {
     pub launch: &'a Launch,
@@ -331,53 +301,6 @@ pub struct Desk<'a, 'info> {
 }
 
 impl<'a, 'info> Desk<'a, 'info> {
-    /// Pins the accounts to this launch and to the exchange's own configuration.
-    pub fn load(
-        launch: &'a Account<'info, Launch>,
-        accounts: &'a DeskAccounts<'info>,
-        tail: &'a [AccountInfo<'info>],
-    ) -> Result<Self> {
-        require!(
-            launch.is_trader_registered(),
-            VaultError::TraderNotRegistered
-        );
-        require_keys_eq!(
-            accounts.trader_account.key(),
-            launch.trader_account,
-            VaultError::InvalidPhoenixAccount
-        );
-        require_keys_eq!(
-            accounts.orderbook.key(),
-            launch.orderbook,
-            VaultError::InvalidPhoenixAccount
-        );
-        require_keys_eq!(
-            accounts.spline.key(),
-            launch.spline,
-            VaultError::InvalidPhoenixAccount
-        );
-        let exchange = Exchange::load(&accounts.global_config)?;
-        require_keys_eq!(
-            accounts.perp_asset_map.key(),
-            exchange.perp_asset_map,
-            VaultError::InvalidPhoenixAccount
-        );
-        exchange.check_tail(tail)?;
-        Ok(Self {
-            launch,
-            launch_info: launch.to_account_info(),
-            phoenix_program: &accounts.phoenix_program,
-            log_authority: &accounts.log_authority,
-            global_config: &accounts.global_config,
-            trader_account: &accounts.trader_account,
-            perp_asset_map: &accounts.perp_asset_map,
-            orderbook: &accounts.orderbook,
-            spline: &accounts.spline,
-            hawkeye_program: &accounts.hawkeye_program,
-            tail,
-        })
-    }
-
     fn views(&self) -> Views<'_, 'info> {
         Views {
             hawkeye_program: self.hawkeye_program,

@@ -10,9 +10,9 @@ const env = (name: string, fallback?: string): string => {
 
 const expand = (path: string) => (path.startsWith("~") ? homedir() + path.slice(1) : path);
 
-export interface KeeperConfig {
+export interface CrankConfig {
   rpcUrl: string;
-  /** The key named as keeper in the protocol config. It needs SOL for fees and holds no funds. */
+  /** Any funded wallet: it pays the network fees, has no privileges and holds no funds. */
   keypair: Keypair;
   /**
    * `dry-run` (default) builds and simulates every transaction and sends nothing.
@@ -29,7 +29,7 @@ export interface KeeperConfig {
   stateFile: string;
 }
 
-export function loadConfig(): KeeperConfig {
+export function loadConfig(): CrankConfig {
   const mode = env("KEEPER_MODE", "dry-run");
   if (mode !== "dry-run" && mode !== "live") throw new Error("KEEPER_MODE must be dry-run or live");
   const table = env("LOOKUP_TABLE", "");
@@ -43,6 +43,6 @@ export function loadConfig(): KeeperConfig {
     swapSlippageBps: Number(env("KEEPER_SWAP_SLIPPAGE_BPS", "100")),
     collectEveryCycles: Number(env("KEEPER_COLLECT_EVERY_CYCLES", "20")),
     lookupTable: table ? new PublicKey(table) : null,
-    stateFile: expand(env("KEEPER_STATE_FILE", "./keeper-state.json")),
+    stateFile: expand(env("KEEPER_STATE_FILE", "./crank-state.json")),
   };
 }

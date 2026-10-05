@@ -1,4 +1,4 @@
-//! Tax collection and conversion. The keeper decides when; the program decides how much, at
+//! Tax collection and conversion. Whoever calls decides when; the program decides how much, at
 //! what price, and where the money goes.
 use anchor_lang::InstructionData;
 use terp_litesvm::*;
@@ -68,10 +68,10 @@ fn proceeds_are_what_the_pool_paid_split_between_the_vault_and_the_platform_fee(
     let pool_paid = ctx.pool_quote(&keys, 15_000 * TOKEN);
     let converted = event::<TaxConverted>(&ok(ctx.convert_tax(&keys, 15_000 * TOKEN)));
     assert_eq!(converted.usdc_out, pool_paid);
-    // the launch's fixed 3% keeper fee goes to the platform treasury, the rest to the vault
-    let fee = keeper_fee(pool_paid);
-    assert_eq!(converted.keeper_fee, fee);
-    assert_eq!(ctx.launch(&keys).keeper_fee_bps, KEEPER_FEE_BPS);
+    // the launch's fixed 3% platform fee goes to the platform treasury, the rest to the vault
+    let fee = platform_fee(pool_paid);
+    assert_eq!(converted.platform_fee, fee);
+    assert_eq!(ctx.launch(&keys).platform_fee_bps, PLATFORM_FEE_BPS);
     assert_eq!(ctx.balance(&ctx.usdc_ata(&ctx.treasury)), fee);
     assert_eq!(ctx.balance(&keys.vault_usdc), pool_paid - fee);
     // nothing is left in the pass-through account, and the keeper key holds nothing
@@ -85,26 +85,33 @@ fn proceeds_are_what_the_pool_paid_split_between_the_vault_and_the_platform_fee(
     assert!(pool_paid < spot_value * 97 / 100);
     let launch = ctx.launch(&keys);
     assert_eq!(launch.usdc_converted, pool_paid - fee);
-    assert_eq!(launch.keeper_fees_paid, fee);
+    assert_eq!(launch.platform_fees_paid, fee);
 }
 
 #[test]
-fn only_the_keeper_converts() {
+fn anyone_converts_and_gains_nothing_by_it() {
     let (mut ctx, keys) = with_tax();
-    ctx.user("stranger", &keys.mint);
-    assert_err(
-        ctx.convert_tax_raw("stranger", &keys, 15_000 * TOKEN, swap(15_000 * TOKEN)),
-        VaultError::Unauthorized,
+    let stranger = ctx.user("stranger", &keys.mint);
+    let pool_paid = ctx.pool_quote(&keys, 15_000 * TOKEN);
+    // no role is needed to sell a tax batch
+    let converted = event::<TaxConverted>(&ok(ctx.convert_tax_raw(
+        "stranger",
+        &keys,
+        15_000 * TOKEN,
+        swap(15_000 * TOKEN),
+    )));
+    // the proceeds went to the vault and the platform treasury, none of it to the caller
+    assert_eq!(converted.usdc_out, pool_paid);
+    assert_eq!(
+        ctx.balance(&keys.vault_usdc) + ctx.balance(&ctx.usdc_ata(&ctx.treasury)),
+        pool_paid
     );
-    assert_err(
-        ctx.convert_tax_raw(CREATOR, &keys, 15_000 * TOKEN, swap(15_000 * TOKEN)),
-        VaultError::Unauthorized,
-    );
-    ok(ctx.convert_tax(&keys, 15_000 * TOKEN));
+    assert_eq!(ctx.balance(&ctx.usdc_ata(&stranger)), 0);
+    assert_eq!(ctx.balance(&ctx.token_ata(&stranger, &keys.mint)), 0);
 }
 
 #[test]
-fn the_keeper_cannot_choose_the_batch_size() {
+fn the_caller_cannot_choose_the_batch_size() {
     let (mut ctx, keys) = with_tax();
     // the batch is the whole 15k balance (the cap is 50k); a trickle is refused
     assert_err(
@@ -248,7 +255,7 @@ fn conversion_needs_the_launch_pool_in_the_swap() {
 }
 
 #[test]
-fn the_keeper_fee_can_only_go_to_the_configured_treasury() {
+fn the_platform_fee_can_only_go_to_the_configured_treasury() {
     let (mut ctx, keys) = with_tax();
     // the keeper names another wallet's USDC account, or the vault itself, as the fee's destination
     let caller_usdc = ctx.usdc_ata(&ctx.caller);
@@ -269,24 +276,24 @@ fn the_keeper_fee_can_only_go_to_the_configured_treasury() {
 }
 
 #[test]
-fn a_launch_keeps_the_keeper_fee_it_was_created_with() {
+fn a_launch_keeps_the_platform_fee_it_was_created_with() {
     let (mut ctx, keys) = with_tax();
     // the platform cannot set a fee above the 20% cap
-    assert_err(ctx.set_keeper_fee(2_001), VaultError::InvalidParameter);
+    assert_err(ctx.set_platform_fee(2_001), VaultError::InvalidParameter);
     // it raises the fee to the cap; that applies to launches created afterwards only
-    ok(ctx.set_keeper_fee(2_000));
-    assert_eq!(ctx.launch(&keys).keeper_fee_bps, KEEPER_FEE_BPS);
+    ok(ctx.set_platform_fee(2_000));
+    assert_eq!(ctx.launch(&keys).platform_fee_bps, PLATFORM_FEE_BPS);
     let pool_paid = ctx.pool_quote(&keys, 15_000 * TOKEN);
     let converted = event::<TaxConverted>(&ok(ctx.convert_tax(&keys, 15_000 * TOKEN)));
-    assert_eq!(converted.keeper_fee, keeper_fee(pool_paid));
+    assert_eq!(converted.platform_fee, platform_fee(pool_paid));
 
     let later = ctx.launch_with_pool(SUPPLY, POOL_USDC);
-    assert_eq!(ctx.launch(&later).keeper_fee_bps, 2_000);
+    assert_eq!(ctx.launch(&later).platform_fee_bps, 2_000);
     ok(ctx.collect_tax(&later, &[later.pool_token_vault]));
     let before = ctx.balance(&ctx.usdc_ata(&ctx.treasury));
     let pool_paid = ctx.pool_quote(&later, 15_000 * TOKEN);
     let converted = event::<TaxConverted>(&ok(ctx.convert_tax(&later, 15_000 * TOKEN)));
-    assert_eq!(converted.keeper_fee, pool_paid / 5);
+    assert_eq!(converted.platform_fee, pool_paid / 5);
     assert_eq!(
         ctx.balance(&ctx.usdc_ata(&ctx.treasury)) - before,
         pool_paid / 5

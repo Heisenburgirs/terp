@@ -10,7 +10,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import {
   DLMM_PROGRAM_ID,
-  MAX_KEEPER_FEE_BPS,
+  MAX_PLATFORM_FEE_BPS,
   SLOT_MS,
   TRANSFER_FEE_TIERS,
   USDC_DECIMALS,
@@ -32,7 +32,7 @@ import { PROGRAM_ID } from "@/lib/env";
 import {
   PROTOCOL_POLICY,
   atomsToInput,
-  describeKeeperFee,
+  describePlatformFee,
   describePolicy,
   formatActivation,
   formatAtoms,
@@ -204,9 +204,8 @@ export function CreateFlow() {
   const [seedStored, setSeedStored] = useState(true);
   const [seedLost, setSeedLost] = useState(false);
   // The two permanent choices. Neither has a default: the creator has to pick each one.
-  const keeper = protocol.status === "ready" ? protocol.config.keeper : null;
-  // Keeper fee: the launch's own once it exists; before, the config's rate, which step 1 copies into the launch.
-  const keeperFeeBps = launch ? launch.keeperFeeBps : protocol.status === "ready" ? protocol.config.keeperFeeBps : null;
+  // Platform fee: the launch's own once it exists; before, the config's rate, which step 1 copies into the launch.
+  const platformFeeBps = launch ? launch.platformFeeBps : protocol.status === "ready" ? protocol.config.platformFeeBps : null;
   const [feeChoice, setFeeChoice] = useState<number | null>(null);
   const [assetChoice, setAssetChoice] = useState<number | null>(null);
 
@@ -397,7 +396,7 @@ export function CreateFlow() {
   const reviewCreate = async () => {
     if (!publicKey || supply === null || creatorAllocation === null || poolAllocation === null) return;
     if (initialPrice === null || initialPrice <= 0n || startPrice === null || realizedPrice === null) return;
-    if (feeChoice === null || !chosenMarket || keeperFeeBps === null) return;
+    if (feeChoice === null || !chosenMarket || platformFeeBps === null) return;
     const params = launchParams(chosenMarket.assetId, supply, creatorAllocation, poolAllocation, initialPrice);
     const signature = await sendTx({
       title: `Create ${symbol} and its launch vault`,
@@ -413,8 +412,8 @@ export function CreateFlow() {
           `aims to stay open and close to ${target}, in profit or not; tax always adds collateral; under ${formatLeverage(policy.minLeverageBps)} the position is topped up to ${target}; above ${formatLeverage(policy.maxLeverageBps)} any wallet can cut it to ${formatLeverage(policy.deleverageToBps)}`,
         ],
         [
-          "Keeper fee (permanent)",
-          `${formatBps(keeperFeeBps)} of the USDC every tax sale brings in, paid to the Terp platform treasury; the rest goes to the vault`,
+          "Platform fee (permanent)",
+          `${formatBps(platformFeeBps)} of the USDC every tax sale brings in, paid to the Terp platform treasury; the rest goes to the vault`,
         ],
         ["Supply minted to your wallet", tokens(supply)],
         ["Declared creator allocation", tokens(creatorAllocation)],
@@ -422,7 +421,7 @@ export function CreateFlow() {
         [
           "Transfer tax on seeding the pool (step 3)",
           seedTax !== null
-            ? `${tokens(seedTax)}, out of your creator allocation: the vault starts with these as tax tokens and the keeper sells them into the pool over time`
+            ? `${tokens(seedTax)}, out of your creator allocation: the vault starts with these as tax tokens, which are sold into the pool over time`
             : "n/a",
         ],
         ["USDC spent", "none, in this step or any other; step 2 only needs your wallet to hold some"],
@@ -438,18 +437,16 @@ export function CreateFlow() {
         ],
         ["Max price drop per conversion, below the reference", formatBps(params.maxPriceDropBps)],
         [
-          "Tax conversion and deployment",
-          keeper
-            ? `sent by the Terp keeper (${keeper.toBase58()}); converted USDC goes to the vault, less the keeper fee`
-            : "sent by the Terp keeper; converted USDC goes to the vault, less the keeper fee",
+          "Selling tax and rebalancing the position",
+          "open to any wallet, with no operator key; carried by trades made on Terp, and by an open bot for quiet tokens; the USDC from each tax sale goes to the vault, less the platform fee",
         ],
         ["Minimum collateral deposit", formatUsd(params.minDepositUsdc)],
         ["Minimum redemption", tokens(params.minRedeemTokens)],
       ],
       notes: [
         "Signed by your wallet and by the new mint's keypair, generated in this browser and used only for this transaction.",
-        `After this transaction the mint authority, the metadata, the ${formatBps(feeChoice)} transfer tax, the leveraged asset (${chosenMarket.symbol}), the leverage policy and the ${formatBps(keeperFeeBps)} keeper fee can never be changed, by you or anyone else.`,
-        `The tax tokens go to this token's vault; no wallet, yours included, can collect them. When they are sold, ${formatBps(keeperFeeBps)} of the USDC goes to the platform treasury and the rest to the vault. The fee is the protocol's current rate, copied into the launch by this transaction; if the admin changes the rate before it confirms, the launch gets the new one (never more than ${formatBps(MAX_KEEPER_FEE_BPS)}).`,
+        `After this transaction the mint authority, the metadata, the ${formatBps(feeChoice)} transfer tax, the leveraged asset (${chosenMarket.symbol}), the leverage policy and the ${formatBps(platformFeeBps)} platform fee can never be changed, by you or anyone else.`,
+        `The tax tokens go to this token's vault; no wallet, yours included, can collect them. When they are sold, ${formatBps(platformFeeBps)} of the USDC goes to the platform treasury and the rest to the vault. The fee is the protocol's current rate, copied into the launch by this transaction; if the admin changes the rate before it confirms, the launch gets the new one (never more than ${formatBps(MAX_PLATFORM_FEE_BPS)}).`,
         `Leverage is held near ${target} even while ${chosenMarket.symbol} is below the position's entry price, so liquidation is never far away (roughly a 15–20% adverse move from ${target}).`,
         "The reference price is what a tax sale into the pool realizes at launch. The program refuses a conversion priced more than the maximum drop below it (per cooldown elapsed), and then follows a running average of conversions. Step 2 creates the pool on the price bin this number was computed from.",
         "The pool will hold tokens only at the start: no USDC of yours goes in. The pool allocation is deposited in step 3 into positions owned by the vault and locked for good, so you cannot take it back. The transfer tax on that deposit is paid on top, from the tokens you keep.",
@@ -550,7 +547,7 @@ export function CreateFlow() {
         ["Tokens the pool receives in total", tokens(poolAllocation)],
         [
           `${formatBps(feeBps)} transfer tax on the deposit, on top`,
-          `${tokens(grossUp(poolAllocation, feeBps) - poolAllocation)}: withheld in the pool's token account, swept to the vault, and sold into the pool by the keeper over time`,
+          `${tokens(grossUp(poolAllocation, feeBps) - poolAllocation)}: withheld in the pool's token account, swept to the vault, and sold into the pool over time`,
         ],
         ["Still to leave your wallet", `up to ${tokens(seedNeeds)}`],
         ["USDC you send", "none"],
@@ -565,7 +562,7 @@ export function CreateFlow() {
       ],
       notes: [
         "This cannot be undone. The tokens go into positions owned by the launch vault with a lock that never releases. Your wallet is only their operator, which Meteora does not let remove locked liquidity, and the vault program has no instruction that withdraws it.",
-        `The vault starts with the tax withheld from this deposit. The keeper sells it into the pool in batches, which is sell pressure from the first conversions on.`,
+        `The vault starts with the tax withheld from this deposit. It is sold into the pool in batches, which is sell pressure from the first sales on.`,
         stored
           ? "The position transactions are also signed by a key made in this browser and kept for this browser session only. If the page reloads, come back to this step in the same tab and it continues where it stopped."
           : "The position transactions are also signed by a key made in this browser. Your browser refused to store it, so do not reload or close this page until the step is done: it could not be resumed.",
@@ -639,7 +636,7 @@ export function CreateFlow() {
               ["Creator", <Address key="creator" value={launch.creator} />],
               ["Transfer tax", formatBps(launch.transferFeeBps), "permanent; goes to this token's vault"],
               ["Vault position", formatMandate(launch), "permanent; on Phoenix perpetuals"],
-              ["Keeper fee", formatBps(launch.keeperFeeBps), "permanent; share of converted tax paid to the platform"],
+              ["Platform fee", formatBps(launch.platformFeeBps), "permanent; share of converted tax paid to the platform"],
               ["Supply", formatAtoms(launch.initialSupply, decimals)],
               ["Creator allocation", formatAtoms(launch.creatorAllocation, decimals)],
               ["Pool allocation", formatAtoms(launch.poolAllocation, decimals)],
@@ -723,9 +720,9 @@ export function CreateFlow() {
         <Panel title="Tax and leveraged asset" aside="two permanent choices">
           <p className="small">
             Tax tokens from every transfer go to the token&apos;s own vault. The vault sells them in the token&apos;s
-            pool for USDC. {describeKeeperFee(keeperFeeBps)} The vault deposits its USDC on Phoenix and holds a long on
-            the asset you choose here. {describePolicy(policy)} The Terp keeper decides when tax is sold and deployed; no wallet, yours and the
-            keeper&apos;s included, can withdraw it.
+            pool for USDC. {describePlatformFee(platformFeeBps)} The vault deposits its USDC on Phoenix and holds a long on
+            the asset you choose here. {describePolicy(policy)} Nobody operates the vault: selling tax and rebalancing are
+            open to any wallet and travel with trades made on Terp. No wallet, yours included, can withdraw from it.
           </p>
           <fieldset className="choice">
             <legend>
@@ -790,8 +787,8 @@ export function CreateFlow() {
               ["Transfer tax", feeChoice !== null ? formatBps(feeChoice) : "not chosen", "to this token's vault"],
               ["Vault position", chosenMarket ? mandate : "not chosen", "opened with the converted tax"],
               [
-                "Keeper fee",
-                keeperFeeBps !== null ? `${formatBps(keeperFeeBps)} of converted tax` : "reading the protocol config…",
+                "Platform fee",
+                platformFeeBps !== null ? `${formatBps(platformFeeBps)} of converted tax` : "reading the protocol config…",
                 "set by the platform, not by you; paid to its treasury out of every tax sale and fixed for this launch at creation",
               ],
             ]}
@@ -952,7 +949,7 @@ export function CreateFlow() {
             <li>
               Seeding is a taxed transfer. The pool receives the whole pool allocation; the {feeLabel} tax on it
               {seedTax !== null && <> ({tokens(seedTax)})</>} leaves your wallet on top. The vault starts with those
-              tokens as tax, and the keeper sells them into the pool over time.
+              tokens as tax, and they are sold into the pool over time.
             </li>
             <li>
               The pool&apos;s swap fee is charged in USDC and goes to the locked positions. Only your wallet can
@@ -1003,7 +1000,7 @@ export function CreateFlow() {
             status={
               launch
                 ? "done"
-                : publicKey && formProblems.length === 0 && initialPrice !== null && initialPrice > 0n && keeperFeeBps !== null
+                : publicKey && formProblems.length === 0 && initialPrice !== null && initialPrice > 0n && platformFeeBps !== null
                   ? "ready"
                   : "blocked"
             }
@@ -1011,22 +1008,22 @@ export function CreateFlow() {
               needWallet ??
               (noMarkets
                 ? "No leveraged assets are listed yet, so a launch cannot be created."
-                : formProblems.length === 0 && keeperFeeBps === null
-                  ? "The protocol config has not loaded, so the keeper fee this launch would get is not known yet."
+                : formProblems.length === 0 && platformFeeBps === null
+                  ? "The protocol config has not loaded, so the platform fee this launch would get is not known yet."
                   : "Complete the token form and the two permanent choices above.")
             }
             signs={[
               `creates the Token-2022 mint with the immutable ${feeLabel} transfer tax and on-mint metadata`,
               "mints the whole supply to your wallet, then removes the mint and metadata authorities",
-              `creates the launch account and the vault's token accounts, and records the leveraged asset (${assetSymbol ?? "not chosen yet"}), the leverage policy, the keeper fee, the conversion limits and the reference price (create_launch)`,
+              `creates the launch account and the vault's token accounts, and records the leveraged asset (${assetSymbol ?? "not chosen yet"}), the leverage policy, the platform fee, the conversion limits and the reference price (create_launch)`,
             ]}
             costs={[
               ["Tokens", supply !== null ? `${tokens(supply)} minted to you` : "n/a"],
               ["Transfer tax", feeBps !== null ? formatBps(feeBps) : "not chosen", "permanent"],
               ["Vault position", assetSymbol ? mandate : "not chosen", "permanent"],
               [
-                "Keeper fee",
-                keeperFeeBps !== null ? `${formatBps(keeperFeeBps)} of converted tax, to the platform` : "not known yet",
+                "Platform fee",
+                platformFeeBps !== null ? `${formatBps(platformFeeBps)} of converted tax, to the platform` : "not known yet",
                 "permanent",
               ],
               ["USDC", "none"],
@@ -1156,7 +1153,7 @@ export function CreateFlow() {
               [
                 "Transfer tax on that deposit",
                 seedTax !== null ? tokens(seedTax) : "n/a",
-                "leaves your wallet on top; withheld in the pool's account, then swept to the vault and sold by the keeper over time",
+                "leaves your wallet on top; withheld in the pool's account, then swept to the vault and sold into the pool over time",
               ],
               ["USDC", "none"],
               [
@@ -1221,15 +1218,16 @@ export function CreateFlow() {
         <Notice title="After step 4: Phoenix onboarding">
           <p>
             After <code>register_trader</code>, Phoenix must enable the vault&apos;s trader account through its API.
-            That is done with <code>scripts/onboard-trader.ts</code>, not from this page. Until then deployment cannot
-            happen: no collateral is deposited and no {assetSymbol ? `${assetSymbol} ` : ""}perp exposure is opened. Tax collection, conversion and
+            That is done with <code>scripts/onboard-trader.ts</code>, not from this page. Until then a rebalance does
+            nothing: no collateral is deposited and no {assetSymbol ? `${assetSymbol} ` : ""}perp exposure is opened. Tax collection, conversion and
             redemptions against the vault&apos;s idle USDC work in the meantime.
           </p>
           <p className="small">
-            After that the Terp keeper, the launchpad operator&apos;s key, sweeps the tax, sells it and deploys it,
-            usually in one transaction. The keeper decides when; the program fixes the batch size, the price floor, the
-            order, the keeper fee and where the money goes, and the keeper cannot withdraw anything. Collecting tax, deleveraging,
-            redemptions and claim payouts stay open to any wallet and do not depend on the keeper.
+            After that the token runs without an operator. Every buy or sell made on Terp also carries, when there is
+            work, the steps that sweep the tax, sell a batch and rebalance the position; an open bot that anyone can run
+            does the same for a token nobody is trading here. Whoever sends a step decides only when: the program fixes
+            the batch size, the price floor, the order, the platform fee and where the money goes, and the sender
+            receives nothing. Redemptions and claim payouts are open to any wallet and do not depend on any of this.
           </p>
         </Notice>
       </Panel>

@@ -23,7 +23,7 @@ All formulas are implemented in `programs/terp/src/math.rs`, mirrored in
 | Starting price | stated as a starting market cap (price x supply); the pool starts on the first price bin at or above it |
 | Price range | the top of the seeded range, 10x to 100x the starting price (50x by default); not stored on the launch |
 
-The pool's quote asset is USDC, the position is a long that aims at 5x, and the keeper fee is the
+The pool's quote asset is USDC, the position is a long that aims at 5x, and the platform fee is the
 platform's rate at the time of creation; those are not the creator's choices in this MVP. Nor is
 the pool's shape: bin step 2%, base fee 1%, and the SDK's `curvature` 0.6 are constants of the
 frontend (`app/src/lib/liquidity.ts`). **Those three numbers and the range bounds are the values
@@ -58,7 +58,7 @@ creator must hold = pool allocation x (1 + fee / (1 - fee)), plus one token atom
 ```
 
 That tax comes out of the creator allocation, which therefore cannot be zero. It belongs to the
-vault like any other tax: it is swept and the keeper sells it into the pool in batches. A vault
+vault like any other tax: it is swept and sold into the pool in batches. A vault
 therefore starts with about 3% (or 1%) of the pool allocation in unsold tax tokens, and selling
 them is sell pressure from the first conversions on.
 
@@ -82,7 +82,7 @@ USDC (`CollectFeeMode.OnlyY`) and accrues to the liquidity positions, which here
 - **Where it goes.** The positions' fee owner is the vault. Meteora pays a claim only to the fee
   owner's accounts: for USDC, the vault's USDC account. A claim to any other account is rejected.
   Claimed fees are idle USDC of the vault, so they are part of `E` and are deployed like converted
-  tax. No keeper fee is taken from them.
+  tax. No platform fee is taken from them.
 - **Who can claim.** Only the positions' operator, which is the creator's wallet. The token page
   shows the unclaimed amount to everyone and a claim button to that wallet. If the creator never
   claims, the fees stay in the positions; they are not lost, and not in `E`.
@@ -96,34 +96,40 @@ USDC (`CollectFeeMode.OnlyY`) and accrues to the liquidity positions, which here
 1. Every transfer leaves the token's tax (1% or 3%, fixed at launch) withheld in the
    recipient's token account, in the launched token. This applies on every venue, not only in
    the launch pool. Nothing arrives in USDC automatically.
-2. The keeper sends one transaction that:
-   - sweeps the withheld tokens into the vault (`collect_tax`),
-   - sells a batch into the token's own pool for USDC, once the vault holds at least
+2. Three steps, open to any wallet, turn it into the position:
+   - sweep the withheld tokens into the vault (`collect_tax`),
+   - sell a batch into the token's own pool for USDC, once the vault holds at least
      `min_convert_tokens` (`convert_tax`),
-   - deposits the USDC on Phoenix, once at least `min_deposit_usdc` is idle, and applies the
-     position strategy below (`deploy`).
+   - deposit the USDC on Phoenix, once at least `min_deposit_usdc` is idle, and apply the
+     position strategy below (`rebalance`).
+3. Nobody is appointed to send them. A buy or sell made through Terp's trade panel carries them
+   in the same transaction when there is work and it fits, so trading is what moves tax into the
+   position. An open bot, the crank, does the same for tokens nobody trades on Terp's site. A
+   trade made elsewhere pays the tax and carries nothing; its tax waits for the next carrier.
 
-Revenue is the USDC the pool actually paid, less the keeper fee. It is less than
+Revenue is the USDC the pool actually paid, less the platform fee. It is less than
 "volume x tax x price" because the sale itself pays the transfer tax into the pool, pays the
 pool's fee, and moves the price. The program counts `tokens_collected`, `tokens_converted`,
-`usdc_converted` (what reached the vault) and `keeper_fees_paid` from balance changes; those are
+`usdc_converted` (what reached the vault) and `platform_fees_paid` from balance changes; those are
 what the UI shows.
 
-## Keeper fee
+## Platform fee
 
-The platform earns by running the keeper. Inside `convert_tax` the program splits what the pool
+The platform fee is the platform's share of each tax sale. It is not payment for running
+anything: nobody has to run the market. Inside `convert_tax` the program splits what the pool
 paid:
 
 ```
-keeper fee = floor(usdc_out x keeper_fee_bps / 10,000)    to the platform treasury
-to vault   = usdc_out - keeper fee
+platform fee = floor(usdc_out x platform_fee_bps / 10,000)    to the platform treasury
+to vault   = usdc_out - platform fee
 ```
 
-- The rate is in the protocol config and capped by the program at 20% (`MAX_KEEPER_FEE_BPS`).
+- The rate is in the protocol config and capped by the program at 20% (`MAX_PLATFORM_FEE_BPS`).
   The platform rate is 3% (300 bps), set at `init-config` (its default).
 - A launch copies the rate when it is created and keeps it. Changing the config affects only
   launches created afterwards.
-- The fee's destination is the config's treasury; the keeper cannot name another account.
+- The fee's destination is the config's treasury; whoever calls `convert_tax` cannot name
+  another account, and gets none of it.
 - It is taken on converted tax only. Nothing is taken from collateral, PnL or redemptions.
 
 The split is of the converted tax, not of the trade: 97% of each sale's USDC goes to the vault and
@@ -134,17 +140,20 @@ All before the sale's own costs.
 Selling tax is sell pressure on the token. The tax withheld when the tax itself is sold comes back
 to the vault on a later sweep.
 
-**What leaves a vault:** redemption payouts. Nothing else. The keeper fee is taken from tax
+**What leaves a vault:** redemption payouts. Nothing else. The platform fee is taken from tax
 proceeds before they reach the vault, never from the vault.
 
-**What enters a vault:** converted tax, less the keeper fee, and pool swap fees when the creator's
+**What enters a vault:** converted tax, less the platform fee, and pool swap fees when the creator's
 wallet claims them.
 
 ## Position strategy
 
 The goal is a position that stays open and close to 5x. The rule is a leverage band; whether the
-position is in profit or at a loss plays no part. Every rule is enforced by the program; the
-keeper only chooses when to call `deploy`, which takes no arguments.
+position is in profit or at a loss plays no part. Every rule is enforced by the program.
+`rebalance` applies all of it and takes no arguments; whoever calls it chooses only when.
+`deploy` (steps 1 and 2 below) and `deleverage` (the cut) are the same rules as separate
+instructions that fail, instead of doing nothing, when there is no work. The examples below say
+`deploy`; a `rebalance` does the same.
 
 | Leverage | Launch field | Value |
 |---|---|---|
@@ -201,8 +210,8 @@ fall ($144: $800 behind $4,800), so anything beyond that opens the cut.
 | Leverage under 4.75x after the deposit, in profit or at a loss | `deploy` tops up to 5x, with or without a new deposit |
 | Leverage between 4.75x and 5x | `deploy` deposits only; nothing is traded |
 | Leverage between 5x and 6x | `deploy` deposits only; margin pulls leverage back toward 5x |
-| The account is liquidatable right now | `deploy` reverts; the tax waits until the position is gone, then the next call opens a new one |
-| Leverage above 6x | anyone may `deleverage`, which cuts the position to 5.5x |
+| The account is liquidatable right now | `deploy` reverts and `rebalance` adds nothing; the tax waits until the position is gone, then the next call opens a new one |
+| Leverage above 6x | `rebalance` (or `deleverage`), sent by anyone, cuts the position to 5.5x |
 
 Other rules:
 
@@ -224,12 +233,13 @@ Other rules:
   steady decline without enough tax, repeated cuts shrink the position, the same decay leveraged
   tokens have. Cutting to 5.5x instead of 5x realises less each time but leaves less room before
   the next cut.
-- *Cuts and margin only help between calls.* `deleverage` acts when someone sends it and margin
-  arrives when the keeper deploys. A gap bigger than the cushion can still liquidate the position
-  before either happens.
+- *Cuts and margin only help when someone calls.* A cut and a deposit both happen inside a
+  `rebalance`, and a `rebalance` happens when a trade on Terp carries one or someone sends one.
+  A gap bigger than the cushion, or a stretch with no trades and no bot, can still end in a
+  liquidation before either happens.
 - *Tax margin only helps if tax arrives.* Tax is the only source of new margin. A fast fall, or a
   token nobody is trading, gets no help. Nothing here prevents a liquidation.
-- *A share of tax goes to the platform.* The 3% keeper fee never reaches the vault.
+- *A share of tax goes to the platform.* The 3% platform fee never reaches the vault.
 - *"5x" is a target, not a constant.* Leverage moves with the market inside the 4.75x to 6x band
   between calls, and outside it until someone acts.
 
@@ -238,7 +248,7 @@ whatever the leveraged asset is. The vault never holds the asset itself, only a 
 
 ## Redemption
 
-One transaction, sent by the holder. It does not involve the keeper.
+One transaction, sent by the holder. It depends on nobody else.
 
 ```
 gross          = floor(q x E / S)
@@ -273,7 +283,7 @@ Phoenix throttles withdrawals exchange-wide. If it queues the withdrawal inside 
 - whatever idle USDC is available is paid immediately;
 - the rest becomes a **claim**: a fixed USDC amount recorded for the holder. Its value does not
   change with the market afterwards, and it is subtracted from `E` so no one else can redeem
-  against it and the keeper cannot redeploy it;
+  against it and no rebalance can deposit it;
 - when Phoenix pays, anyone can call `unwrap_canonical` and `pay_claim`; the money can only go to
   the claim's owner. If Phoenix dropped the withdrawal, anyone can call `fund_claims` to request
   exactly the shortfall again.
@@ -291,7 +301,7 @@ collateral revert; redemptions covered by idle USDC still work.
 | Phoenix queues the withdrawal | burn happens, payout becomes a fixed claim |
 | A withdrawal is already queued and this redemption needs collateral | reverts until the queued one is paid |
 | Phoenix account wiped out | it counts as zero; redemptions continue pro-rata against idle USDC |
-| Keeper offline | redemptions are unaffected; tax waits unsold |
+| Nobody is sending upkeep (no trades on Terp, no bot) | redemptions are unaffected; tax waits unsold |
 
 **Final redemption.** When `q = S`, the redeemer closes the whole position, takes everything, and
 no fee is charged, because nobody is left to retain it for. USDC that reaches the vault after

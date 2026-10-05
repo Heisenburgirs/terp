@@ -1,7 +1,7 @@
 /** Display helpers. Amounts stay bigint atoms until the final string. */
 import {
   DELEVERAGE_TO_BPS,
-  MAX_KEEPER_FEE_BPS,
+  MAX_PLATFORM_FEE_BPS,
   MAX_LEVERAGE_BPS,
   MIN_LEVERAGE_BPS,
   TARGET_LEVERAGE_BPS,
@@ -99,8 +99,8 @@ export function formatLots(baseLots: bigint, launch: Launch): string {
 }
 
 /**
- * The leverage band of a launch: under the minimum a deployment buys exposure back up to the
- * target; above the maximum anyone may cut the position to the deleverage level.
+ * The leverage band of a launch: under the minimum a rebalance buys exposure back up to the
+ * target; above the maximum it cuts the position to the deleverage level.
  */
 export type LeveragePolicy = Pick<Launch, "minLeverageBps" | "targetLeverageBps" | "maxLeverageBps" | "deleverageToBps">;
 
@@ -120,24 +120,24 @@ export function describePolicy(policy: LeveragePolicy): string {
   const deleverageTo = formatLeverage(policy.deleverageToBps);
   return (
     `The vault aims to keep its position open and close to ${target}, whether it is in profit or not. ` +
-    `Every deployment first adds the new USDC as collateral. If there is then no position, or leverage is under ${min}, it buys exposure back up to ${target}. ` +
+    `Every rebalance first adds the vault's idle USDC as collateral. If there is then no position, or leverage is under ${min}, it buys exposure back up to ${target}. ` +
     `Between ${min} and ${target} nothing is traded; between ${target} and ${max} tax only adds collateral, which pulls leverage back down. ` +
-    `Above ${max} any wallet can cut the position to ${deleverageTo}. Leverage moves with the market; it is not a constant ${target}.`
+    `Above ${max} a rebalance cuts the position to ${deleverageTo}. Leverage moves with the market; it is not a constant ${target}.`
   );
 }
 
 /**
- * The platform's keeper fee in one sentence. `keeperFeeBps` is the launch's own rate, or the
+ * The platform fee in one sentence. `platformFeeBps` is the launch's own rate, or the
  * config's rate for a launch not created yet; `null` when neither is known.
  */
-export function describeKeeperFee(keeperFeeBps: number | null): string {
+export function describePlatformFee(platformFeeBps: number | null): string {
   const share =
-    keeperFeeBps === null
-      ? `A fixed share set at launch, at most ${formatBps(MAX_KEEPER_FEE_BPS)},`
-      : keeperFeeBps === 0
+    platformFeeBps === null
+      ? `A fixed share set at launch, at most ${formatBps(MAX_PLATFORM_FEE_BPS)},`
+      : platformFeeBps === 0
         ? "No part"
-        : formatBps(keeperFeeBps);
-  return `${share} of the USDC each tax sale brings in is paid to the Terp platform treasury as the keeper fee; the rest goes to the vault.`;
+        : formatBps(platformFeeBps);
+  return `${share} of the USDC each tax sale brings in is paid to the Terp platform treasury as the platform fee; the rest goes to the vault.`;
 }
 
 /** What a launch's vault holds by mandate, e.g. `"5x-target BTC long"`. Asset and direction are fixed at launch. */

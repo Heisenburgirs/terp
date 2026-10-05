@@ -27,8 +27,18 @@ export interface TxPlan {
    * and for swaps wrapped in a program call; the default 200,000 per instruction is not enough.
    */
   computeUnits?: number;
-  /** Builds the instructions. `signers` are extra keypairs that co-sign (a new mint, a new position). */
-  build: () => Promise<{ instructions: TransactionInstruction[]; signers?: Signer[] }>;
+  /**
+   * Builds the instructions. `signers` are extra keypairs that co-sign (a new mint, a new position).
+   * A build that only learns what the transaction carries while building it (a trade with vault
+   * upkeep attached) can return `rows` and `notes` to add to the review, and its own `computeUnits`.
+   */
+  build: () => Promise<{
+    instructions: TransactionInstruction[];
+    signers?: Signer[];
+    computeUnits?: number;
+    rows?: [label: string, value: string][];
+    notes?: string[];
+  }>;
 }
 
 type Phase = "preparing" | "ready" | "blocked" | "signing" | "confirming" | "done" | "failed";
@@ -36,6 +46,10 @@ type Phase = "preparing" | "ready" | "blocked" | "signing" | "confirming" | "don
 interface Review {
   plan: TxPlan;
   phase: Phase;
+  /** What the build added to the plan's rows and notes, and the compute-unit limit in force. */
+  rows: [label: string, value: string][];
+  notes: string[];
+  computeUnits: number | undefined;
   /** Lamports the fee payer loses in simulation: rent for new accounts plus the network fee. */
   solCost: bigint | null;
   error: string | null;
@@ -92,7 +106,7 @@ const SendTxContext = createContext<{ send: SendTx; sendBatch: SendBatch } | nul
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Compute-unit limit for transactions that touch Phoenix: redeem, deploy, deleverage, fund claims. */
+/** Compute-unit limit for transactions that touch Phoenix: redeem, rebalance, fund claims. */
 export const PHOENIX_COMPUTE_UNITS = 1_400_000;
 
 type Table = AddressLookupTableAccount | null;
@@ -100,7 +114,7 @@ type Table = AddressLookupTableAccount | null;
 const tables = new WeakMap<Connection, Promise<Table>>();
 
 /** The configured address lookup table, read once per connection. `null` when not configured or not found. */
-function loadLookupTable(connection: Connection): Promise<Table> {
+export function loadLookupTable(connection: Connection): Promise<Table> {
   if (!LOOKUP_TABLE) return Promise.resolve(null);
   let pending = tables.get(connection);
   if (!pending) {
@@ -170,18 +184,28 @@ export function SendTxProvider({ children }: { children: ReactNode }) {
         batchResolver.current?.(null);
         batchResolver.current = null;
         setBatch(null);
-        setReview({ plan, phase: "preparing", solCost: null, error: null, logs: [], signature: null });
+        setReview({
+          plan,
+          phase: "preparing",
+          rows: [],
+          notes: [],
+          computeUnits: plan.computeUnits,
+          solCost: null,
+          error: null,
+          logs: [],
+          signature: null,
+        });
         if (!publicKey) {
           patch({ phase: "blocked", error: "Connect a wallet first." });
           return;
         }
         (async () => {
-          const [{ instructions: planned, signers = [] }, table] = await Promise.all([
-            plan.build(),
-            loadLookupTable(connection),
-          ]);
-          const instructions = plan.computeUnits
-            ? [ComputeBudgetProgram.setComputeUnitLimit({ units: plan.computeUnits }), ...planned]
+          const [{ instructions: planned, signers = [], rows = [], notes = [], computeUnits: builtUnits }, table] =
+            await Promise.all([plan.build(), loadLookupTable(connection)]);
+          const computeUnits = builtUnits ?? plan.computeUnits;
+          patch({ rows, notes, computeUnits });
+          const instructions = computeUnits
+            ? [ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnits }), ...planned]
             : planned;
           const transaction = compile(publicKey, PublicKey.default.toBase58(), instructions, table);
           const [balance, simulation] = await Promise.all([
@@ -513,16 +537,16 @@ export function SendTxProvider({ children }: { children: ReactNode }) {
           <div className="dialog">
             <h2>{review.plan.title}</h2>
             <dl className="rows">
-              {review.plan.rows.map(([label, value]) => (
+              {[...review.plan.rows, ...review.rows].map(([label, value]) => (
                 <div key={label}>
                   <dt>{label}</dt>
                   <dd>{value}</dd>
                 </div>
               ))}
-              {review.plan.computeUnits && (
+              {review.computeUnits && (
                 <div>
                   <dt>Compute-unit limit requested</dt>
-                  <dd>{review.plan.computeUnits.toLocaleString("en-US")}</dd>
+                  <dd>{review.computeUnits.toLocaleString("en-US")}</dd>
                 </div>
               )}
               <div>
@@ -536,7 +560,7 @@ export function SendTxProvider({ children }: { children: ReactNode }) {
                 </dd>
               </div>
             </dl>
-            {review.plan.notes?.map((note) => (
+            {[...(review.plan.notes ?? []), ...review.notes].map((note) => (
               <p key={note} className="muted small">
                 {note}
               </p>

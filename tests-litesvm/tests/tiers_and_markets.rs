@@ -39,7 +39,7 @@ fn a_one_percent_launch_taxes_one_percent_into_its_own_vault() {
     assert_eq!(converted.usdc_out, pool_paid);
     assert_eq!(
         ctx.balance(&keys.vault_usdc),
-        pool_paid - keeper_fee(pool_paid)
+        pool_paid - platform_fee(pool_paid)
     );
 }
 

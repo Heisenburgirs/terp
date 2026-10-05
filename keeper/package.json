@@ -1,6 +1,7 @@
 {
   "name": "@terp/keeper",
   "version": "0.1.0",
+  "description": "The Terp crank: an open bot that sends the vaults' upkeep transactions. It has no on-chain role; any funded wallet can run it.",
   "private": true,
   "type": "module",
   "scripts": {

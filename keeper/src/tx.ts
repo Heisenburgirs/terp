@@ -10,7 +10,7 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import type { KeeperConfig } from "./config";
+import type { CrankConfig } from "./config";
 
 /** Solana's packet limit for a serialized transaction. */
 const MAX_TX_BYTES = 1232;
@@ -35,26 +35,27 @@ export class Sender {
 
   constructor(
     readonly connection: Connection,
-    readonly config: KeeperConfig,
+    readonly config: CrankConfig,
   ) {
     this.state = existsSync(config.stateFile)
       ? JSON.parse(readFileSync(config.stateFile, "utf8"))
       : { lookupTables: {} };
   }
 
-  private get keeper(): Keypair {
+  /** The crank's fee-paying wallet. */
+  private get payer(): Keypair {
     return this.config.keypair;
   }
 
   private async build(instructions: TransactionInstruction[], tables: AddressLookupTableAccount[]) {
     const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash("confirmed");
     const message = new TransactionMessage({
-      payerKey: this.keeper.publicKey,
+      payerKey: this.payer.publicKey,
       recentBlockhash: blockhash,
       instructions: [ComputeBudgetProgram.setComputeUnitLimit({ units: COMPUTE_UNITS }), ...instructions],
     }).compileToV0Message(tables);
     const transaction = new VersionedTransaction(message);
-    transaction.sign([this.keeper]);
+    transaction.sign([this.payer]);
     return { transaction, blockhash, lastValidBlockHeight };
   }
 
@@ -75,8 +76,8 @@ export class Sender {
       if (table && missing.length === 0) return table;
       if (table && this.config.mode === "live") {
         const extend = AddressLookupTableProgram.extendLookupTable({
-          payer: this.keeper.publicKey,
-          authority: this.keeper.publicKey,
+          payer: this.payer.publicKey,
+          authority: this.payer.publicKey,
           lookupTable: table.key,
           addresses: missing.slice(0, 20),
         });
@@ -89,13 +90,13 @@ export class Sender {
 
     const slot = await this.connection.getSlot("finalized");
     const [create, address] = AddressLookupTableProgram.createLookupTable({
-      authority: this.keeper.publicKey,
-      payer: this.keeper.publicKey,
+      authority: this.payer.publicKey,
+      payer: this.payer.publicKey,
       recentSlot: slot,
     });
     const extend = AddressLookupTableProgram.extendLookupTable({
-      payer: this.keeper.publicKey,
-      authority: this.keeper.publicKey,
+      payer: this.payer.publicKey,
+      authority: this.payer.publicKey,
       lookupTable: address,
       addresses: addresses.slice(0, 20),
     });
@@ -136,7 +137,7 @@ export class Sender {
   }
 
   /**
-   * Simulates, and in live mode sends, one keeper action. Every transaction is simulated first;
+   * Simulates, and in live mode sends, one upkeep action. Every transaction is simulated first;
    * one that fails simulation is never sent.
    */
   async send(scope: string, launch: string, what: string, instructions: TransactionInstruction[]): Promise<Outcome> {
@@ -152,7 +153,7 @@ export class Sender {
         ...new Map(
           instructions.flatMap((ix) => [ix.programId, ...ix.keys.map((k) => k.pubkey)]).map((k) => [k.toBase58(), k]),
         ).values(),
-      ].filter((k) => !k.equals(this.keeper.publicKey));
+      ].filter((k) => !k.equals(this.payer.publicKey));
       const table = await this.lookupTable(launch, addresses);
       if (!table) {
         log(scope, "transaction needs an address lookup table; it is created in live mode and used from the next cycle");

@@ -1,5 +1,5 @@
 import { ticksToUsd, type VaultState } from "@terp/sdk";
-import { describeKeeperFee, describePolicy, formatAtoms, formatBps, formatLeverage, formatLots, formatMandate, formatPrice, formatUsd } from "@/lib/format";
+import { describePlatformFee, describePolicy, formatAtoms, formatBps, formatLeverage, formatLots, formatMandate, formatPrice, formatUsd } from "@/lib/format";
 import { Notice, Panel, RiskBadge, Rows, riskMeaning } from "./ui";
 
 export function VaultPanel({ state, symbol }: { state: VaultState; symbol: string }) {
@@ -53,8 +53,8 @@ export function VaultPanel({ state, symbol }: { state: VaultState; symbol: strin
       {launch.traderAccount && !trader?.isOnboarded && (
         <Notice tone="warn" title="Phoenix trader not onboarded">
           <p>
-            Phoenix has not enabled deposits and orders for this vault&apos;s trader account, so the keeper&apos;s{" "}
-            <code>deploy</code> cannot work yet and no exposure can be opened. Tax collection, conversion and redemptions against idle USDC
+            Phoenix has not enabled deposits and orders for this vault&apos;s trader account, so a{" "}
+            <code>rebalance</code> does nothing yet and no exposure can be opened. Tax collection, conversion and redemptions against idle USDC
             work in the meantime.
           </p>
         </Notice>
@@ -69,13 +69,13 @@ export function VaultPanel({ state, symbol }: { state: VaultState; symbol: strin
             "every transfer of this token; the tax tokens go to this vault",
           ],
           [
-            "Keeper fee",
-            `${formatBps(launch.keeperFeeBps)} of converted tax`,
+            "Platform fee",
+            `${formatBps(launch.platformFeeBps)} of converted tax`,
             "paid to the Terp platform treasury out of every tax sale; the rest goes to this vault; fixed at launch",
           ],
           ["Idle USDC", formatUsd(state.idleUsdc), "in the vault; pays claims first, then redemptions"],
           ["Outstanding claims", formatUsd(launch.pendingClaims), "owed to earlier redeemers; deducted from E"],
-          ["Idle USDC not reserved for claims", formatUsd(state.freeUsdc), "what redemptions and the keeper's next deployment can use"],
+          ["Idle USDC not reserved for claims", formatUsd(state.freeUsdc), "what redemptions and the next rebalance can use"],
           ["In transit", formatUsd(state.canonical), "Phoenix canonical USDC held by the vault"],
           ["Phoenix collateral", formatUsd(perp.collateral)],
           [
@@ -100,12 +100,12 @@ export function VaultPanel({ state, symbol }: { state: VaultState; symbol: strin
           [
             "Minimum leverage",
             min,
-            `under this after a deposit, a deployment buys exposure back up to ${target}; between ${min} and ${target} nothing is traded`,
+            `under this after a deposit, a rebalance buys exposure back up to ${target}; between ${min} and ${target} nothing is traded`,
           ],
           [
             "Maximum leverage",
             max,
-            `above this any wallet may deleverage, which cuts the position to ${formatLeverage(launch.deleverageToBps)}`,
+            `above this a rebalance, which any wallet can send, cuts the position to ${formatLeverage(launch.deleverageToBps)}`,
           ],
           ["Phoenix trader", traderStatus],
           ["Token supply (S)", `${formatAtoms(state.supply, launch.decimals)} ${symbol}`, "all unburned tokens"],
@@ -119,9 +119,9 @@ export function VaultPanel({ state, symbol }: { state: VaultState; symbol: strin
       <p className="muted small">
         E = idle USDC + in-transit USDC + Phoenix account equity (floored at zero) − outstanding claims. {describePolicy(launch)}{" "}
         The same rule opens the first position and re-opens one that was closed or liquidated.{" "}
-        {describeKeeperFee(launch.keeperFeeBps)} The Terp keeper
-        decides when tax is sold and deployed; sizes, prices and destinations are computed by the program, and the
-        keeper cannot withdraw anything. Pool liquidity is not part of E, locked or not; pool swap fees join E only
+        {describePlatformFee(launch.platformFeeBps)} Nobody operates the vault: selling tax and rebalancing are
+        open to any wallet, sizes, prices and destinations are computed by the program, and whoever sends a step
+        receives nothing. Pool liquidity is not part of E, locked or not; pool swap fees join E only
         once they are claimed into the vault.
       </p>
     </Panel>

@@ -1,6 +1,6 @@
 //! The position strategy: stay open, stay close to 5x. Tax is margin first; under 4.75x exposure
-//! is bought back up to 5x; above 6x anyone may cut the position to 5.5x. The keeper only
-//! triggers; the program sizes everything.
+//! is bought back up to 5x; above 6x anyone may cut the position to 5.5x. Callers only
+//! trigger; the program sizes everything.
 use terp_litesvm::*;
 
 const SUPPLY: u64 = 1_000_000 * TOKEN;
@@ -49,13 +49,11 @@ fn registration_is_idempotent_and_binds_the_trader_to_the_launch() {
 }
 
 #[test]
-fn only_the_keeper_deploys_and_the_program_sizes_the_position() {
+fn anyone_deploys_and_the_program_sizes_the_position() {
     let (mut ctx, keys) = funded();
-    assert_err(ctx.deploy("stranger", &keys), VaultError::Unauthorized);
-    assert_err(ctx.deploy(CREATOR, &keys), VaultError::Unauthorized);
-
+    // No role is needed: the caller supplies nothing but the moment, and receives nothing.
     // a vault with no position opens one at 5x on its first deposit
-    let deployed = event::<Deployed>(&ok(ctx.deploy(KEEPER, &keys)));
+    let deployed = event::<Deployed>(&ok(ctx.deploy("stranger", &keys)));
     assert_eq!(deployed.deposited, COLLATERAL);
     assert_eq!(
         (deployed.leverage_bps_before, deployed.unrealized_pnl),

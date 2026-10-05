@@ -6,8 +6,7 @@ use anchor_spl::{
         spl_token_2022::{
             extension::{
                 metadata_pointer::MetadataPointer, transfer_fee::TransferFeeConfig,
-                transfer_hook::TransferHook as TransferHookConfig, BaseStateWithExtensions,
-                ExtensionType, StateWithExtensions,
+                BaseStateWithExtensions, ExtensionType, StateWithExtensions,
             },
             state::Mint as MintState,
         },
@@ -127,22 +126,12 @@ fn validate_mint(mint_info: &AccountInfo, launch: &Pubkey, total_supply: u64) ->
             matches!(
                 extension,
                 ExtensionType::TransferFeeConfig
-                    | ExtensionType::TransferHook
                     | ExtensionType::MetadataPointer
                     | ExtensionType::TokenMetadata
             ),
             VaultError::UnsupportedMintExtension
         );
     }
-    // a transfer hook is allowed only if it is this program's, and nobody can ever change it
-    if let Ok(hook) = state.get_extension::<TransferHookConfig>() {
-        require!(
-            Option::<Pubkey>::from(hook.authority).is_none()
-                && Option::<Pubkey>::from(hook.program_id) == Some(crate::ID),
-            VaultError::UnsupportedMintExtension
-        );
-    }
-
     let fee = state
         .get_extension::<TransferFeeConfig>()
         .map_err(|_| error!(VaultError::InvalidTransferFee))?;
@@ -239,7 +228,7 @@ pub fn create_launch(ctx: Context<CreateLaunch>, args: CreateLaunchArgs) -> Resu
         min_leverage_bps: MIN_LEVERAGE_BPS,
         max_leverage_bps: MAX_LEVERAGE_BPS,
         deleverage_to_bps: DELEVERAGE_TO_BPS,
-        keeper_fee_bps: config.keeper_fee_bps,
+        platform_fee_bps: config.platform_fee_bps,
         redemption_fee_bps: REDEMPTION_FEE_BPS,
         exit_cost_bps: EXIT_COST_BPS,
         order_slippage_bps: ORDER_SLIPPAGE_BPS,
@@ -259,7 +248,7 @@ pub fn create_launch(ctx: Context<CreateLaunch>, args: CreateLaunchArgs) -> Resu
         tokens_collected: 0,
         tokens_converted: 0,
         usdc_converted: 0,
-        keeper_fees_paid: 0,
+        platform_fees_paid: 0,
         last_rebalance_slot: 0,
         usdc_deposited: 0,
         usdc_withdrawn: 0,

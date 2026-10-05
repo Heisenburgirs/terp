@@ -43,13 +43,22 @@ pnpm --filter @terp/scripts localnet:e2e       # in a second terminal
 talks to (default `http://127.0.0.1:8899`).
 
 What it does: config and SOL market; a 3% mint and its launch; a DLMM pool seeded with tokens
-only into positions owned by the launch vault and locked; a buy, the sweep of its tax, and the
-keeper's `convert_tax` through the real pool; then the creator's attempts to remove the
+only into positions owned by the launch vault and locked; a buy, the sweep of its tax and a
+`convert_tax` through the real pool, both sent by a wallet with no role; a `rebalance` sent by
+the buyer, which must succeed doing nothing because no Phoenix trader exists there; then the
+creator's attempts to remove the
 liquidity and to claim the pool fees to their own wallet, which must fail, and a claim into the
 vault, which must succeed. It exits non-zero if the liquidity turns out not to be locked.
 
-What it does not cover: Phoenix (no trader is registered, nothing is deployed), mainnet pool
-state and compute, and the frontend.
+What it does not cover: Phoenix (no trader is registered, nothing is deposited; Phoenix's global
+configuration is not cloned, so the `rebalance` there is built with stand-in addresses for the
+accounts the program does not read without a trader), a swap with upkeep attached in the same
+transaction, mainnet pool state and compute, and the frontend. The `rebalance` step was added
+after the last run of this script and has not been run yet.
+
+`scripts/localnet/probe-hook.ts` is a separate probe on the same validator: it asks the real DLMM
+program to open a pool for a mint with an active transfer hook, which it refuses (see
+FEASIBILITY.md).
 
 ## 1. Preflight (free, read-only)
 
@@ -66,14 +75,15 @@ Phoenix's API, reads the SOL mark through Hawkeye, and reports whether the progr
   and `Anchor.toml`. Keep that keypair; it is not in git.
 - Decide the upgrade authority. A single hot key is not acceptable for real funds: use a multisig
   with a timelock, or plan to revoke it.
-- Decide three keys, all yours as the operator, and keep them separate:
-  - **admin**: rotates roles, lists markets, pauses. Keep it cold.
-  - **keeper**: lives on the server that runs the keeper service. It can only trigger conversion
-    and deployment; it cannot withdraw.
-  - **treasury**: receives the keeper fee on every tax conversion, and residual USDC of launches
+- Decide two keys, both yours as the platform, and keep them separate:
+  - **admin**: rotates admin and treasury, lists markets, pauses. Keep it cold.
+  - **treasury**: receives the platform fee on every tax sale, and residual USDC of launches
     whose supply reached zero. This is where platform revenue accumulates; a multisig is fine.
-- Decide the **keeper fee**: the share of converted tax paid to the treasury, 0 to 2000 bps (20%
-  is the program's cap). `--keeper-fee-bps` defaults to 300 (3%). Each launch keeps the rate in
+
+  There is no keeper key. Selling tax and adjusting positions are open to any wallet, so there
+  is nothing to appoint, protect or rotate for them.
+- Decide the **platform fee**: the platform's share of the USDC from each tax sale, paid to the treasury, 0 to 2000 bps (20%
+  is the program's cap). `--platform-fee-bps` defaults to 300 (3%). Each launch keeps the rate in
   force when it is created.
 - Read `docs/SECURITY.md`, "Known limitations".
 
@@ -94,14 +104,14 @@ Run it immediately after step 3: the first caller becomes admin.
 
 ```sh
 RPC_URL=<mainnet rpc> ADMIN_KEYPAIR=<path> \
-  pnpm --filter @terp/scripts init-config --keeper <pubkey> --treasury <pubkey> \
-  --keeper-fee-bps <bps> --dry-run
+  pnpm --filter @terp/scripts init-config --treasury <pubkey> \
+  --platform-fee-bps <bps> --dry-run
 # then again without --dry-run, and type the phrase
 ```
 
 It pins the AMM to Meteora DLMM (`swap`, `swap2`), which cannot be changed afterwards, sets the
-keeper fee, and creates the treasury's USDC account if it does not exist (conversions fail
-without it). Rerun `preflight` and confirm the admin, keeper, treasury and fee are yours.
+platform fee, and creates the treasury's USDC account if it does not exist (conversions fail
+without it). Rerun `preflight` and confirm the admin, treasury and fee are yours.
 
 Then list the leveraged assets launches may choose. Each listing **SPENDS** rent for one small
 account and is permanent:
@@ -121,8 +131,9 @@ RPC_URL=<mainnet rpc> PAYER_KEYPAIR=<path> \
   pnpm --filter @terp/scripts create-lookup-table --dry-run
 ```
 
-Redemptions and deployments need it to fit in one transaction. Put the printed address in
-`LOOKUP_TABLE` (keeper) and `NEXT_PUBLIC_LOOKUP_TABLE` (frontend).
+Redemptions and rebalances need it to fit in one transaction, and a trade needs it to carry a
+rebalance. Put the printed address in `LOOKUP_TABLE` (the crank) and `NEXT_PUBLIC_LOOKUP_TABLE`
+(frontend).
 
 ## 6. Create a launch (frontend) — **SPENDS** rent and locks the pool's tokens for good
 
@@ -131,8 +142,10 @@ cp app/.env.example app/.env.local   # NEXT_PUBLIC_RPC_URL must be an RPC that a
 pnpm dev
 ```
 
-The RPC must also allow `getProgramAccounts` on the DLMM program: the liquidity-lock status is
-read with it.
+The RPC must also allow `getProgramAccounts` on the DLMM program (the liquidity-lock status is
+read with it) and on Token-2022 filtered by mint (the trade panel and "Sweep tax" find token
+accounts with withheld tax that way; if it is refused, trades still sweep the accounts their
+own swap touches).
 
 The creator picks the tax tier (1% or 3%) and the leveraged asset; both are permanent. They also
 pick a starting market cap (which sets the starting price) and how far up the seeded price range
@@ -183,45 +196,49 @@ RPC_URL=<mainnet rpc> PAYER_KEYPAIR=<path> \
 ```
 
 Until Phoenix enables the launch's trader account, the exchange rejects its deposits and orders,
-so `deploy` cannot work. Tax collection, conversion and redemptions against idle USDC work
-without it.
+so a `rebalance` does nothing and `deploy` fails. Tax collection, conversion and redemptions
+against idle USDC work without it.
 
-## 8. Run the keeper
+## 8. How the market runs, and the crank (optional, anyone can)
 
-The keeper is your service, signing with the keeper key from step 4.
+Nothing has to be started for a launch to run. From the first trade made through the frontend's
+trade panel, each trade carries the upkeep steps there is work for (`convert_tax`,
+`collect_tax`, `rebalance`), and the "Vault upkeep" panel on each token's page lets any connected
+wallet send them by hand. **A trade on the frontend can therefore sell tax and open or increase
+a mainnet position for that launch**, with the user's wallet paying the network fee. To hold
+that back while testing, pause (below).
+
+The crank covers tokens nobody is trading through the frontend. It is the `keeper/` package
+(the name is historical) and needs no special key: `KEEPER_KEYPAIR` is any funded wallet, it has
+no privileges on-chain and receives nothing. Anyone may run one, and several can run at once.
 
 ```sh
-cp .env.example .env    # RPC_URL, KEEPER_KEYPAIR, LOOKUP_TABLE
-pnpm keeper             # KEEPER_MODE defaults to dry-run
+cp .env.example .env    # RPC_URL, KEEPER_KEYPAIR (any funded wallet), LOOKUP_TABLE
+pnpm crank              # KEEPER_MODE defaults to dry-run
 ```
 
 In dry-run it builds and simulates every action and prints what it would do, including the
 compute units each simulation used. Watch it first. The compute budget of the combined
-sweep-sell-deploy transaction on mainnet state has not been measured (see FEASIBILITY.md); if it
-does not fit, the keeper falls back to sending the steps separately.
+sweep-sell-rebalance transaction on mainnet state has not been measured (see FEASIBILITY.md); if
+it does not fit, the crank falls back to sending the steps separately.
 
 Going live **SPENDS** fees and **opens and increases mainnet positions** for every launch:
 
 ```sh
-KEEPER_MODE=live pnpm keeper
+KEEPER_MODE=live pnpm crank
 ```
 
-Position sizes are set by the program from each vault's own USDC, not by the keeper. To limit
-exposure while testing, use `set-paused` to stop conversion and deployment. Remember that a
-vault starts with tax tokens from the seeding of its pool, so the keeper has something to sell
+Position sizes are set by the program from each vault's own USDC, not by whoever calls. To limit
+exposure while testing, use `set-paused` to stop conversion, deposits and new exposure. Remember
+that a vault starts with tax tokens from the seeding of its pool, so there is something to sell
 as soon as the pool has buyers.
 
 ## Pausing
 
-`update_config` with `paused = true` stops new launches, tax conversion and deployment. It never
-stops deleveraging, redemptions or claim payouts.
+`update_config` with `paused = true` stops new launches, tax conversion, deposits and new
+exposure, whoever calls. It never stops a cut above 6x, redemptions or claim payouts. A
+`rebalance` riding in a trade while paused still succeeds; it just does nothing but a cut.
 
 ```sh
 RPC_URL=<mainnet rpc> ADMIN_KEYPAIR=<path> pnpm --filter @terp/scripts set-paused --paused true
 ```
-
-## Replacing the keeper key
-
-If the keeper key is lost or exposed, the admin sets a new one with `update_config`
-(`client.updateConfigIx(admin, { keeper })` in the SDK). An exposed keeper key cannot move funds;
-replace it anyway.

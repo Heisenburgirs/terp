@@ -88,7 +88,7 @@ fn one_launch_cannot_operate_on_another_launchs_phoenix_account_or_vault() {
 }
 
 #[test]
-fn the_keeper_and_the_admin_have_no_path_to_vault_funds() {
+fn no_caller_and_no_admin_has_a_path_to_vault_funds() {
     let idl: serde_json::Value =
         serde_json::from_str(include_str!("../../target/idl/terp.json")).unwrap();
     let instructions = idl["instructions"].as_array().unwrap();
@@ -109,12 +109,12 @@ fn the_keeper_and_the_admin_have_no_path_to_vault_funds() {
             .iter()
             .map(|a| a["name"].as_str().unwrap())
             .collect();
-        // the keeper signs only the two instructions that put tax to work; neither takes a
-        // destination account it could choose. `convert_tax` pays the keeper fee to
-        // `treasury_usdc`, which the program requires to belong to the configured treasury
-        // (see `the_keeper_fee_can_only_go_to_the_configured_treasury` in tax.rs).
-        if accounts.contains(&"keeper") {
-            assert!(["convert_tax", "deploy"].contains(&name), "{name}");
+        // there is no keeper role: nothing takes a privileged trigger
+        assert!(!accounts.contains(&"keeper"), "{name}");
+        // The instructions that put tax to work are open to anyone, so none of them may pay the
+        // caller. `convert_tax` pays the platform fee to `treasury_usdc`, which the program
+        // requires to belong to the configured treasury (see tax.rs).
+        if ["convert_tax", "deploy", "rebalance", "collect_tax"].contains(&name) {
             for forbidden in ["owner_usdc", "caller_usdc", "keeper_usdc"] {
                 assert!(!accounts.contains(&forbidden), "{name}: {accounts:?}");
             }
@@ -145,7 +145,7 @@ fn the_keeper_and_the_admin_have_no_path_to_vault_funds() {
             assert!(["create_launch", "set_pool"].contains(&name), "{name}");
         }
     }
-    // redemption, deleveraging and claim payouts never depend on the keeper or the admin
+    // redemption, deleveraging and claim payouts never depend on the admin, and cannot be paused
     for name in [
         "redeem",
         "deleverage",
@@ -162,16 +162,14 @@ fn the_keeper_and_the_admin_have_no_path_to_vault_funds() {
             .map(|a| a["name"].as_str().unwrap())
             .collect();
         assert!(
-            !accounts.contains(&"keeper")
-                && !accounts.contains(&"admin")
-                && !accounts.contains(&"config"),
+            !accounts.contains(&"admin") && !accounts.contains(&"config"),
             "{name}: {accounts:?}"
         );
     }
 }
 
 /// Every instruction of the program, sorted.
-const EXPECTED: [&str; 17] = [
+const EXPECTED: [&str; 16] = [
     "add_market",
     "collect_tax",
     "convert_tax",
@@ -180,13 +178,12 @@ const EXPECTED: [&str; 17] = [
     "deploy",
     "fund_claims",
     "init_config",
-    "init_hook",
     "pay_claim",
+    "rebalance",
     "redeem",
     "register_trader",
     "set_pool",
     "sweep_residual",
-    "transfer_hook",
     "unwrap_canonical",
     "update_config",
 ];

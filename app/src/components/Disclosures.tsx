@@ -1,6 +1,6 @@
 "use client";
 
-import { MAX_KEEPER_FEE_BPS, type Launch } from "@terp/sdk";
+import { MAX_PLATFORM_FEE_BPS, type Launch } from "@terp/sdk";
 import type { ReactNode } from "react";
 import { useUpgradeAuthority } from "@/hooks/useChain";
 import { useProtocol } from "@/hooks/useClient";
@@ -15,7 +15,6 @@ import { Address, Rows } from "./ui";
 export function AuthorityList({ vault, transferFeeBps }: { vault?: ReactNode; transferFeeBps?: number }) {
   const upgrade = useUpgradeAuthority();
   const protocol = useProtocol();
-  const keeper = protocol.status === "ready" ? <Address value={protocol.config.keeper} /> : "reading…";
   const treasury = protocol.status === "ready" ? <Address value={protocol.config.treasury} /> : "reading…";
   const upgradeAuthority = upgrade.error ? (
     <span className="bad" title={upgrade.error}>could not be read</span>
@@ -48,14 +47,14 @@ export function AuthorityList({ vault, transferFeeBps }: { vault?: ReactNode; tr
         ],
         ["Metadata update authority", "removed", "name, symbol and URI cannot change"],
         [
-          "Keeper (launchpad operator)",
-          keeper,
-          "the only key that can convert tax and deploy it; it cannot withdraw or redirect funds; the admin can replace it",
+          "Vault upkeep (sweeping tax, selling it, rebalancing)",
+          "no key: open to any wallet",
+          "the program fixes amounts, prices and destinations, and the sender receives nothing; the steps travel with trades made on Terp, and an open bot anyone can run covers quiet tokens",
         ],
         [
           "Platform treasury",
           treasury,
-          `receives the keeper fee from every tax conversion, at the rate fixed when the launch was created (at most ${formatBps(MAX_KEEPER_FEE_BPS)}); the admin can replace it`,
+          `receives the platform fee from every tax sale, at the rate fixed when the launch was created (at most ${formatBps(MAX_PLATFORM_FEE_BPS)}); the admin can replace it`,
         ],
         [
           "Pool liquidity seeded at launch",
@@ -81,7 +80,7 @@ export function RiskSection({ launch }: { launch: Launch }) {
   const min = formatLeverage(launch.minLeverageBps);
   const max = formatLeverage(launch.maxLeverageBps);
   const deleverageTo = formatLeverage(launch.deleverageToBps);
-  const keeperFee = formatBps(launch.keeperFeeBps);
+  const platformFee = formatBps(launch.platformFeeBps);
   return (
     <ul className="risks">
       <li>Neither principal nor yield is guaranteed. You can lose everything you put in.</li>
@@ -91,13 +90,13 @@ export function RiskSection({ launch }: { launch: Launch }) {
         value can fall to zero. The asset was chosen by the creator at launch and cannot be changed.
       </li>
       <li>
-        Not all of the tax reaches the vault. {keeperFee} of the USDC every tax sale brings in is paid to the Terp
-        platform treasury as the keeper fee, fixed for this launch when it was created. Only the rest becomes vault
+        Not all of the tax reaches the vault. {platformFee} of the USDC every tax sale brings in is paid to the Terp
+        platform treasury as the platform fee, fixed for this launch when it was created. Only the rest becomes vault
         equity.
       </li>
       <li>
         Leverage is held near {target} even while the position is below its entry price: whenever leverage is under{" "}
-        {min}, a deployment buys exposure back up to {target}, in profit or not. Liquidation is therefore never far
+        {min}, a rebalance buys exposure back up to {target}, in profit or not. Liquidation is therefore never far
         away, roughly a 15–20% adverse move from {target}; an asset more volatile than SOL gets there faster.
       </li>
       <li>
@@ -105,8 +104,8 @@ export function RiskSection({ launch }: { launch: Launch }) {
         reversal in {launch.symbol} hits a bigger position.
       </li>
       <li>
-        Between {target} and {max} nothing is cut; tax only adds collateral. Above {max} any wallet can cut the
-        position to {deleverageTo}, which realises the loss on the part that is closed. In a steady decline without
+        Between {target} and {max} nothing is cut; tax only adds collateral. Above {max} a rebalance, which any wallet
+        can send, cuts the position to {deleverageTo}, which realises the loss on the part that is closed. In a steady decline without
         enough tax, repeated cuts shrink the position, the same decay leveraged tokens have.
       </li>
       <li>
@@ -114,8 +113,8 @@ export function RiskSection({ launch }: { launch: Launch }) {
         A price gap bigger than the cushion can liquidate the position before either happens.
       </li>
       <li>
-        Added collateral only protects the position if tax keeps arriving and the keeper deploys it. With little
-        trading, or in a fast drop, the position can still be liquidated.
+        Added collateral only protects the position if tax keeps arriving and someone&apos;s transaction deposits it.
+        With little trading, or in a fast drop, the position can still be liquidated.
       </li>
       <li>
         A profitable perp position does not make token buyers profitable. Market price can sit above or below
@@ -138,18 +137,25 @@ export function RiskSection({ launch }: { launch: Launch }) {
       </li>
       <li>
         Seeding the pool is itself a taxed transfer, so the vault starts with tax tokens ({tax} on top of the pool
-        allocation). The keeper sells them into the pool over time like any other tax, which is sell pressure from
-        the first conversions on.
+        allocation). They are sold into the pool over time like any other tax, which is sell pressure from the first
+        sales on.
       </li>
       <li>
         Tax tokens that have not been sold yet are not part of vault equity, and sell for less than market price: a
         conversion pays the {tax} transfer tax, the pool&apos;s swap fee and its own price impact.
       </li>
       <li>
-        Tax conversion and deployment depend on the launchpad operator&apos;s keeper being online: only that key can
-        send those two steps. If it is offline, tax sits unconverted and USDC sits idle, adding no collateral and no
-        exposure. The keeper decides only when; it cannot withdraw anything or redirect funds. Redemptions,
-        deleveraging and claim payouts do not depend on it.
+        Nobody is obliged to run the vault. Selling tax and rebalancing the position happen when a transaction
+        carries those steps: trades made on Terp do, and an open bot that anyone can run does for quiet tokens. If
+        nobody trades this token on Terp and no bot runs, tax sits unsold, USDC sits idle and the position is not
+        adjusted, in either direction. Redemptions and claim payouts do not depend on any of it.
+      </li>
+      <li>
+        Because those steps are open to everyone, someone can send them at a moment that suits them: push the pool
+        price down, as far as the program&apos;s price floor allows, just before a tax sale, or pick the moment of a
+        perp order. The program fixes the batch size, the cooldown, the price floor and the order&apos;s limit against
+        Phoenix&apos;s mark, and the sender is paid nothing, so what this can cost the vault per step is bounded. It
+        is not zero.
       </li>
       <li>
         A redemption is one transaction, valued at Phoenix&apos;s mark price in that transaction. If the vault&apos;s
@@ -165,8 +171,7 @@ export function RiskSection({ launch }: { launch: Launch }) {
       </li>
       <li>
         The vault program is upgradeable by its deployer and depends on Phoenix and Meteora operating correctly. The
-        protocol admin can pause tax conversion and the opening of new exposure, can replace the keeper key and the
-        treasury, and can change the keeper fee for launches created later (not for this one).
+        protocol admin can pause tax sales and the opening of new exposure, can replace the treasury, and can change the platform fee for launches created later (not for this one).
       </li>
     </ul>
   );

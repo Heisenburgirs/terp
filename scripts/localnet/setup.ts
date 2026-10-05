@@ -1,7 +1,8 @@
 /**
  * LOCAL SIMULATION ONLY. Prepares `.localnet/` for `start-validator.sh`:
  *
- *   - test keypairs (admin, keeper, treasury, creator, buyer, USDC authority);
+ *   - test keypairs (admin, crank, treasury, creator, buyer, USDC authority). The crank's key
+ *     file is still named `keeper.json`; it is a wallet with no role;
  *   - a copy of mainnet's USDC mint whose mint authority is replaced by the test authority, so
  *     the local run can mint itself USDC. This account is a MOCK and exists only on the local
  *     validator.

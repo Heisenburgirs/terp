@@ -9,9 +9,8 @@ use crate::{
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct InitConfigArgs {
-    pub keeper: Pubkey,
     pub treasury: Pubkey,
-    pub keeper_fee_bps: u16,
+    pub platform_fee_bps: u16,
     pub swap_program: Pubkey,
     pub swap_discriminators: Vec<[u8; 8]>,
 }
@@ -29,7 +28,7 @@ pub fn init_config(ctx: Context<InitConfig>, args: InitConfigArgs) -> Result<()>
     require!(
         !args.swap_discriminators.is_empty()
             && args.swap_discriminators.len() <= MAX_SWAP_DISCRIMINATORS
-            && args.keeper_fee_bps <= MAX_KEEPER_FEE_BPS,
+            && args.platform_fee_bps <= MAX_PLATFORM_FEE_BPS,
         VaultError::InvalidParameter
     );
     let mut swap_discriminators = [[0u8; 8]; MAX_SWAP_DISCRIMINATORS];
@@ -42,9 +41,8 @@ pub fn init_config(ctx: Context<InitConfig>, args: InitConfigArgs) -> Result<()>
 
     ctx.accounts.config.set_inner(ProtocolConfig {
         admin: ctx.accounts.admin.key(),
-        keeper: args.keeper,
         treasury: args.treasury,
-        keeper_fee_bps: args.keeper_fee_bps,
+        platform_fee_bps: args.platform_fee_bps,
         swap_program: args.swap_program,
         swap_discriminators,
         swap_discriminator_count: args.swap_discriminators.len() as u8,
@@ -57,10 +55,9 @@ pub fn init_config(ctx: Context<InitConfig>, args: InitConfigArgs) -> Result<()>
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct UpdateConfigArgs {
     pub admin: Option<Pubkey>,
-    pub keeper: Option<Pubkey>,
     pub treasury: Option<Pubkey>,
     /// For launches created afterwards; existing launches keep their rate.
-    pub keeper_fee_bps: Option<u16>,
+    pub platform_fee_bps: Option<u16>,
     pub paused: Option<bool>,
 }
 
@@ -71,24 +68,21 @@ pub struct UpdateConfig<'info> {
     pub config: Account<'info, ProtocolConfig>,
 }
 
-/// Rotate the admin, the keeper and the treasury, and pause risk-increasing actions.
+/// Rotate the admin and the treasury, and pause risk-increasing actions.
 pub fn update_config(ctx: Context<UpdateConfig>, args: UpdateConfigArgs) -> Result<()> {
     let config = &mut ctx.accounts.config;
     if let Some(admin) = args.admin {
         config.admin = admin;
     }
-    if let Some(keeper) = args.keeper {
-        config.keeper = keeper;
-    }
     if let Some(treasury) = args.treasury {
         config.treasury = treasury;
     }
-    if let Some(keeper_fee_bps) = args.keeper_fee_bps {
+    if let Some(platform_fee_bps) = args.platform_fee_bps {
         require!(
-            keeper_fee_bps <= MAX_KEEPER_FEE_BPS,
+            platform_fee_bps <= MAX_PLATFORM_FEE_BPS,
             VaultError::InvalidParameter
         );
-        config.keeper_fee_bps = keeper_fee_bps;
+        config.platform_fee_bps = platform_fee_bps;
     }
     if let Some(paused) = args.paused {
         config.paused = paused;

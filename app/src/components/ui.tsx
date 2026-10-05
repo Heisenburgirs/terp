@@ -67,7 +67,7 @@ const RISK: Record<RiskStatus, { label: string; tone: string; meaning: (policy: 
     label: "No position",
     tone: "",
     meaning: (policy) =>
-      `The vault holds no perp exposure right now. Once it has collateral, the keeper's next deployment opens the position at ${formatLeverage(policy.targetLeverageBps)}.`,
+      `The vault holds no perp exposure right now. Once it has collateral, the next rebalance opens the position at ${formatLeverage(policy.targetLeverageBps)}.`,
   },
   healthy: {
     label: "Healthy",

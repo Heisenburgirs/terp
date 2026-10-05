@@ -155,3 +155,19 @@ fn pausing_blocks_new_launches() {
     ctx.set_paused(false);
     ok(ctx.create_launch(mint, default_args(SUPPLY)));
 }
+
+#[test]
+fn a_mint_with_a_transfer_hook_is_rejected() {
+    let mut ctx = Ctx::new();
+    let supply = 1_000_000 * TOKEN;
+    // a hook could block or tax transfers in ways the launch does not control, and Meteora's
+    // pools refuse such mints
+    let mint = ctx.create_mint(MintOpts {
+        hook: Some(mock_swap::ID),
+        ..MintOpts::valid(supply)
+    });
+    assert_err(
+        ctx.create_launch(mint, default_args(supply)),
+        VaultError::UnsupportedMintExtension,
+    );
+}

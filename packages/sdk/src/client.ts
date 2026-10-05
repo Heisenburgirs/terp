@@ -45,12 +45,10 @@ const bn = (v: bigint | number) => new BN(v.toString());
 
 export interface ProtocolConfig {
   admin: PublicKey;
-  /** The launchpad operator's key: the only one that may convert tax and deploy it. */
-  keeper: PublicKey;
-  /** The platform's wallet: receives the keeper fee and residual USDC of finished launches. */
+  /** The platform's wallet: receives the platform fee and residual USDC of finished launches. */
   treasury: PublicKey;
-  /** Share of converted tax paid to the treasury, for launches created from now on. */
-  keeperFeeBps: number;
+  /** The platform's share of each tax sale, paid to the treasury, for launches created from now on. */
+  platformFeeBps: number;
   swapProgram: PublicKey;
   paused: boolean;
 }
@@ -91,14 +89,14 @@ export interface Launch {
   transferFeeBps: number;
   /** The leverage the vault aims to keep (5x): the ceiling whenever exposure is added. */
   targetLeverageBps: number;
-  /** Under this (4.75x) a deployment buys exposure back up to target. */
+  /** Under this (4.75x) `rebalance` or `deploy` buys exposure back up to target. */
   minLeverageBps: number;
-  /** Above this (6x) anyone may cut the position. */
+  /** Above this (6x) `rebalance` or `deleverage` cuts the position. */
   maxLeverageBps: number;
-  /** What a deleverage reduces leverage to (5.5x). */
+  /** What a cut reduces leverage to (5.5x). */
   deleverageToBps: number;
-  /** Share of converted tax the platform takes for running the keeper; fixed at creation. */
-  keeperFeeBps: number;
+  /** The platform's share of the USDC from each tax sale (3%); fixed at creation. */
+  platformFeeBps: number;
   redemptionFeeBps: number;
   exitCostBps: number;
   orderSlippageBps: number;
@@ -119,10 +117,12 @@ export interface Launch {
   pendingClaims: bigint;
   tokensCollected: bigint;
   tokensConverted: bigint;
-  /** Converted tax that reached the vault: pool proceeds less the keeper fee. */
+  /** Converted tax that reached the vault: pool proceeds less the platform fee. */
   usdcConverted: bigint;
-  /** Keeper fees paid to the platform treasury out of this launch's converted tax. */
-  keeperFeesPaid: bigint;
+  /** Platform fees paid to the platform treasury out of this launch's converted tax. */
+  platformFeesPaid: bigint;
+  /** Slot of the last deposit or top-up, by `rebalance` or `deploy`; `0n` if there was none. */
+  lastRebalanceSlot: bigint;
   usdcDeposited: bigint;
   usdcWithdrawn: bigint;
   tokensRedeemed: bigint;
@@ -167,12 +167,16 @@ export interface VaultState {
   markIsStale: boolean;
 }
 
-/** What can be triggered on a vault right now, and why not if it cannot. */
+/**
+ * What any wallet can trigger on a vault right now, and why not if it cannot. No caller is
+ * privileged: the program fixes every amount, price and destination, so whoever sends these
+ * only picks the moment and receives nothing.
+ */
 export interface PendingWork {
-  /** Tax tokens the keeper's next conversion has to sell; `0n` if nothing can be converted now. */
+  /** Tax tokens the next `convert_tax` has to sell; `0n` if nothing can be converted now. */
   convertBatch: bigint;
   convertBlockedBy: "no-pool" | "below-threshold" | "cooldown" | null;
-  /** USDC the keeper's next `deploy` would deposit; `0n` if below the launch's minimum. */
+  /** USDC the next `rebalance` or `deploy` would deposit; `0n` if below the launch's minimum. */
   deployUsdc: bigint;
   /**
    * Whether that deploy would also add exposure: there is no position, or leverage after the
@@ -180,10 +184,15 @@ export interface PendingWork {
    * adds margin.
    */
   wouldIncrease: boolean;
-  /** Whether `deploy` has something to do: a deposit, or a top-up. */
+  /** Whether `deploy` has something to do: a deposit, or a top-up. It fails otherwise. */
   canDeploy: boolean;
-  /** Open to anyone: leverage is above the launch maximum. */
+  /** Leverage is above the launch maximum, so the position can be cut. */
   canDeleverage: boolean;
+  /**
+   * Whether `rebalance` would do something now: deposit, top up, or cut. `rebalance` succeeds
+   * either way; this only says whether it is worth attaching.
+   */
+  canRebalance: boolean;
   /** Claims not covered by idle USDC and not already requested from Phoenix. */
   claimsShortfall: bigint;
   canonicalToUnwrap: bigint;
@@ -230,8 +239,9 @@ type AccountClient = {
 
 /**
  * Builds instructions and reads state. It never signs or sends: callers decide when a
- * transaction goes out and who pays for it. Converting tax and deploying it are the keeper's;
- * the admin and the creator have their own few; everything else can be sent by any wallet.
+ * transaction goes out and who pays for it. The admin and the creator have their own few
+ * instructions; everything else, including selling tax and adjusting the position, can be sent
+ * by any wallet.
  */
 export class TerpClient {
   readonly program: Program;
@@ -268,9 +278,8 @@ export class TerpClient {
     if (!raw) return null;
     return {
       admin: raw.admin,
-      keeper: raw.keeper,
       treasury: raw.treasury,
-      keeperFeeBps: raw.keeperFeeBps,
+      platformFeeBps: raw.platformFeeBps,
       swapProgram: raw.swapProgram,
       paused: raw.paused,
     };
@@ -316,7 +325,7 @@ export class TerpClient {
       minLeverageBps: raw.minLeverageBps,
       maxLeverageBps: raw.maxLeverageBps,
       deleverageToBps: raw.deleverageToBps,
-      keeperFeeBps: raw.keeperFeeBps,
+      platformFeeBps: raw.platformFeeBps,
       redemptionFeeBps: raw.redemptionFeeBps,
       exitCostBps: raw.exitCostBps,
       orderSlippageBps: raw.orderSlippageBps,
@@ -336,7 +345,8 @@ export class TerpClient {
       tokensCollected: big(raw.tokensCollected),
       tokensConverted: big(raw.tokensConverted),
       usdcConverted: big(raw.usdcConverted),
-      keeperFeesPaid: big(raw.keeperFeesPaid),
+      platformFeesPaid: big(raw.platformFeesPaid),
+      lastRebalanceSlot: big(raw.lastRebalanceSlot),
       usdcDeposited: big(raw.usdcDeposited),
       usdcWithdrawn: big(raw.usdcWithdrawn),
       tokensRedeemed: big(raw.tokensRedeemed),
@@ -460,7 +470,10 @@ export class TerpClient {
     );
   }
 
-  /** Mirrors the program's own conditions for the permissionless instructions. */
+  /**
+   * Mirrors the program's own conditions for the upkeep instructions, all of which are open to
+   * any wallet. `paused` is the protocol config's pause flag.
+   */
   pendingWork(state: VaultState, paused = false): PendingWork {
     const { launch, perp } = state;
     let convertBatch = 0n;
@@ -491,13 +504,16 @@ export class TerpClient {
       aim - perp.notional >= lotValue;
 
     const shortfall = launch.pendingClaims > state.idleUsdc + state.canonical ? launch.pendingClaims - state.idleUsdc - state.canonical : 0n;
+    const canDeploy = (deployUsdc > 0n && !perp.isLiquidatable) || wouldIncrease;
+    const canDeleverage = state.risk === "deleverage" || (state.risk === "liquidatable" && perp.notional > 0n);
     return {
       convertBatch,
       convertBlockedBy,
       deployUsdc,
       wouldIncrease,
-      canDeploy: (deployUsdc > 0n && !perp.isLiquidatable) || wouldIncrease,
-      canDeleverage: state.risk === "deleverage" || (state.risk === "liquidatable" && perp.notional > 0n),
+      canDeploy,
+      canDeleverage,
+      canRebalance: canDeploy || canDeleverage,
       claimsShortfall: state.trader?.hasQueuedWithdrawal ? 0n : shortfall,
       canonicalToUnwrap: state.canonical,
     };
@@ -531,9 +547,8 @@ export class TerpClient {
   initConfigIx(
     admin: PublicKey,
     args: {
-      keeper: PublicKey;
       treasury: PublicKey;
-      keeperFeeBps: number;
+      platformFeeBps: number;
       swapProgram: PublicKey;
       swapDiscriminators: number[][];
     },
@@ -551,14 +566,13 @@ export class TerpClient {
   /** Admin only. Omitted fields stay as they are. */
   updateConfigIx(
     admin: PublicKey,
-    args: { admin?: PublicKey; keeper?: PublicKey; treasury?: PublicKey; keeperFeeBps?: number; paused?: boolean },
+    args: { admin?: PublicKey; treasury?: PublicKey; platformFeeBps?: number; paused?: boolean },
   ): Promise<TransactionInstruction> {
     return this.methods
       .updateConfig({
         admin: args.admin ?? null,
-        keeper: args.keeper ?? null,
         treasury: args.treasury ?? null,
-        keeperFeeBps: args.keeperFeeBps ?? null,
+        platformFeeBps: args.platformFeeBps ?? null,
         paused: args.paused ?? null,
       })
       .accountsStrict({ admin, config: configPda(this.programId) })
@@ -637,8 +651,8 @@ export class TerpClient {
       .instruction();
   }
 
-  // Vault instructions. Collecting, deleveraging, redeeming and claim payouts are open to
-  // any wallet; converting and deploying are the keeper's.
+  // Vault instructions. All of them are open to any wallet: the program fixes amounts, prices
+  // and destinations, so the caller only supplies the moment and receives nothing.
 
   async registerTraderIx(payer: PublicKey, mint: PublicKey): Promise<TransactionInstruction> {
     const a = launchAddresses(mint, this.programId);
@@ -677,14 +691,14 @@ export class TerpClient {
   }
 
   /**
-   * Keeper only. Sells one tax batch. `swap` is the AMM's own swap instruction for exactly
+   * Open to any wallet. Sells one tax batch. `swap` is the AMM's own swap instruction for exactly
    * `tokensIn`, built with `user` = the launch's tax authority; the program signs for that PDA,
-   * checks the batch size and the realized price itself, pays the launch's keeper fee to the
+   * enforces the batch size, the cooldown and the price floor itself, pays the launch's platform fee to the
    * platform `treasury` (the one in the config; its USDC account must exist) and forwards the
    * rest of the USDC to the vault.
    */
   convertTaxIx(
-    keeper: PublicKey,
+    caller: PublicKey,
     launch: Launch,
     tokensIn: bigint,
     swap: TransactionInstruction,
@@ -700,7 +714,7 @@ export class TerpClient {
     return this.methods
       .convertTax(bn(tokensIn), Buffer.from(swap.data))
       .accountsStrict({
-        keeper,
+        caller,
         config: configPda(this.programId),
         launch: launch.address,
         taxAuthority,
@@ -747,20 +761,39 @@ export class TerpClient {
   }
 
   /**
-   * Keeper only. Deposits the vault's idle USDC as collateral, and tops exposure up to
-   * target if there is no position or leverage is under the launch minimum. The program sizes and prices
-   * everything. Can follow `collectTaxIx` and `convertTaxIx` in the same transaction.
+   * Open to any wallet. Deposits the vault's idle USDC as collateral, and tops exposure up to
+   * target if there is no position or leverage is under the launch minimum. The program sizes
+   * and prices everything. Fails when there is nothing to do; use `rebalanceIx` for a step that
+   * must not fail the transaction it shares.
    */
-  async deployIx(keeper: PublicKey, launch: Launch): Promise<TransactionInstruction> {
+  async deployIx(caller: PublicKey, launch: Launch): Promise<TransactionInstruction> {
     const { phoenix, ember, tail } = await this.venue(launch);
     return this.methods
       .deploy()
-      .accountsStrict({ keeper, config: configPda(this.programId), launch: launch.address, phoenix, ember })
+      .accountsStrict({ caller, config: configPda(this.programId), launch: launch.address, phoenix, ember })
       .remainingAccounts(tail)
       .instruction();
   }
 
-  /** Allowed only while leverage is above the launch maximum; reduces back to target. */
+  /**
+   * Open to any wallet. Does whatever the position needs right now: cuts it to 5.5x if leverage
+   * is above the launch maximum; otherwise, unless the protocol is paused, deposits idle USDC
+   * and tops exposure up to target when leverage is under the launch minimum or there is no
+   * position. When there is nothing safe to do (nothing idle, in band, stale price, account
+   * about to be liquidated, trader account not yet enabled, paused) it succeeds doing nothing,
+   * so it can ride along in another transaction, such as a trade, without failing it for lack
+   * of work. Can follow `collectTaxIx` and `convertTaxIx` in the same transaction.
+   */
+  async rebalanceIx(caller: PublicKey, launch: Launch): Promise<TransactionInstruction> {
+    const { phoenix, ember, tail } = await this.venue(launch);
+    return this.methods
+      .rebalance()
+      .accountsStrict({ caller, config: configPda(this.programId), launch: launch.address, phoenix, ember })
+      .remainingAccounts(tail)
+      .instruction();
+  }
+
+  /** Fails unless leverage is above the launch maximum; cuts the position to 5.5x. */
   async deleverageIx(caller: PublicKey, launch: Launch): Promise<TransactionInstruction> {
     const { phoenix, ember, tail } = await this.venue(launch);
     return this.methods

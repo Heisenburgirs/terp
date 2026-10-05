@@ -1,17 +1,8 @@
 "use client";
 
-import { TOKEN_2022_PROGRAM_ID, getTransferFeeAmount, unpackAccount } from "@solana/spl-token";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
-import {
-  DLMM_PROGRAM_ID,
-  SLOT_MS,
-  USDC_DECIMALS,
-  USDC_MINT,
-  launchAddresses,
-  math,
-  type VaultState,
-} from "@terp/sdk";
+import { useWallet } from "@solana/wallet-adapter-react";
+import type { TransactionInstruction } from "@solana/web3.js";
+import { SLOT_MS, USDC_DECIMALS, launchAddresses, math, type VaultState } from "@terp/sdk";
 import BN from "bn.js";
 import { useState, type ReactNode } from "react";
 import { useAsync, type AsyncState } from "@/hooks/useAsync";
@@ -20,20 +11,11 @@ import { PHOENIX_COMPUTE_UNITS, useSendTx } from "@/hooks/useSendTx";
 import type { Market } from "@/lib/chain";
 import { errorMessage } from "@/lib/errors";
 import { formatAtoms, formatBps, formatLeverage, formatPrice, formatSlots, formatUsd } from "@/lib/format";
-import { Address, Notice, Panel, Rows } from "./ui";
+import { TAX_SWAP_SLIPPAGE_BPS, buildTaxSwap } from "@/lib/upkeep";
+import { Notice, Panel, Rows } from "./ui";
 
 /** Anchor of this panel, for links elsewhere on the page. */
 export const ACTIVITY_ANCHOR = "vault-activity";
-
-/** Tolerance given to the pool swap itself. The price floor that matters is enforced by the program. */
-const CONVERT_SLIPPAGE_BPS = 100;
-
-/**
- * Token accounts swept by the keeper's one-transaction action. Each is an extra account in a
- * transaction that also carries the pool swap and the Phoenix accounts, so it is kept small;
- * "Collect tax" on its own sweeps more.
- */
-const COMBINED_COLLECT_SOURCES = 6;
 
 interface Props {
   state: VaultState;
@@ -48,8 +30,7 @@ function Work(props: {
   good?: boolean;
   /** Why it cannot be sent now, or what sending it would do. */
   status: ReactNode;
-  /** Absent when the connected wallet may not send this step. */
-  action?: { label: string; enabled: boolean; onClick: () => void };
+  action: { label: string; enabled: boolean; onClick: () => void };
 }) {
   return (
     <li>
@@ -58,17 +39,15 @@ function Work(props: {
         <span className={`badge ${props.good ? "good" : ""}`}>{props.badge}</span>
       </div>
       <span className="small">{props.status}</span>
-      {props.action && (
-        <div>
-          <button
-            className={props.action.enabled ? "primary" : ""}
-            disabled={!props.action.enabled}
-            onClick={props.action.onClick}
-          >
-            {props.action.label}
-          </button>
-        </div>
-      )}
+      <div>
+        <button
+          className={props.action.enabled ? "primary" : ""}
+          disabled={!props.action.enabled}
+          onClick={props.action.onClick}
+        >
+          {props.action.label}
+        </button>
+      </div>
     </li>
   );
 }
@@ -77,20 +56,15 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
   const client = useClient();
   const protocol = useProtocol();
   const sendTx = useSendTx();
-  const { connection } = useConnection();
   const { publicKey } = useWallet();
   const { launch, perp } = state;
   const [collecting, setCollecting] = useState(false);
   const [collectNote, setCollectNote] = useState<string | null>(null);
-  const [preparing, setPreparing] = useState(false);
-  const [combinedNote, setCombinedNote] = useState<string | null>(null);
 
   const config = protocol.status === "ready" ? protocol.config : null;
-  const keeper = config?.keeper ?? null;
-  // receives the keeper fee; a conversion cannot be built without it
+  // receives the platform fee; a tax sale cannot be built without it
   const treasury = config?.treasury ?? null;
   const paused = Boolean(config?.paused);
-  const isKeeper = Boolean(publicKey && keeper && publicKey.equals(keeper));
   const work = client.pendingWork(state, paused);
   const tokens = (amount: bigint) => `${formatAtoms(amount, launch.decimals)} ${symbol}`;
   /** A program price (USDC atoms per token atom × 1e12) as USDC per whole token. */
@@ -101,24 +75,20 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
   const min = formatLeverage(launch.minLeverageBps);
   const max = formatLeverage(launch.maxLeverageBps);
   const deleverageTo = formatLeverage(launch.deleverageToBps);
-  const keeperFeeRate = formatBps(launch.keeperFeeBps);
+  const platformFeeRate = formatBps(launch.platformFeeBps);
   /** The platform's share of what the pool pays for a tax batch; the vault gets the rest. */
-  const keeperFeeOf = (usdcOut: bigint) => math.bpsOf(usdcOut, launch.keeperFeeBps);
-
-  /** The pool's quote for selling `amount` of tax, as the vault's tax authority would get it. */
-  const quoteBatch = async (amount: bigint) => {
-    const { dlmm, tokenIsX } = market.data!;
-    // "swap for Y" means selling the pool's X token; the tax batch sells the launch token
-    const binArrays = await dlmm.getBinArrayForSwap(tokenIsX);
-    const quote = dlmm.swapQuote(new BN(amount.toString()), tokenIsX, new BN(CONVERT_SLIPPAGE_BPS), binArrays);
-    return { quote, out: BigInt(quote.outAmount.toString()) };
-  };
-  type BatchQuote = Awaited<ReturnType<typeof quoteBatch>>;
+  const platformFeeOf = (usdcOut: bigint) => math.bpsOf(usdcOut, launch.platformFeeBps);
 
   // Pool quote for the batch the program would sell from tax already collected.
   const batch = work.convertBatch;
   const convertQuote = useAsync(
-    () => quoteBatch(batch),
+    async () => {
+      const { dlmm, tokenIsX } = market.data!;
+      // "swap for Y" means selling the pool's X token; the tax batch sells the launch token
+      const binArrays = await dlmm.getBinArrayForSwap(tokenIsX);
+      const quote = dlmm.swapQuote(new BN(batch.toString()), tokenIsX, new BN(TAX_SWAP_SLIPPAGE_BPS), binArrays);
+      return { out: BigInt(quote.outAmount.toString()) };
+    },
     market.data && batch > 0n ? `convert:${launch.address.toBase58()}:${batch}` : null,
     10_000,
   );
@@ -131,24 +101,24 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
     work.convertBlockedBy === "cooldown" ? launch.convertCooldownSlots - (state.slot - launch.lastConvertSlot) : 0n;
   const onboarded = Boolean(state.trader?.isOnboarded);
 
-  // The policy: what the next deployment does with the USDC idle in the vault right now.
+  // The policy: what the next rebalance does with the USDC idle in the vault right now.
   const leverageAfterDeposit = math.leverageBps(perp.notional, perp.equity + work.deployUsdc);
   const hasPosition = perp.notional !== 0n;
   // exposure is added when leverage after the deposit is under the launch minimum; profit or loss plays no part
   const leveragePosition = !hasPosition
-    ? `no position; with collateral, the next deployment opens one at ${target}`
+    ? `no position; with collateral, the next rebalance opens one at ${target}`
     : perp.isLiquidatable || state.leverageBps === null
       ? "the account is liquidatable"
       : state.leverageBps > BigInt(launch.maxLeverageBps)
-        ? `above the ${max} deleverage threshold; any wallet can cut the position to ${deleverageTo}`
+        ? `above the ${max} threshold; the next rebalance cuts the position to ${deleverageTo}`
         : state.leverageBps > BigInt(launch.targetLeverageBps)
           ? `above the ${target} target; tax adds collateral only, and nothing is cut unless it goes above ${max}`
           : state.leverageBps >= BigInt(launch.minLeverageBps)
             ? `between the ${min} minimum and the ${target} target; nothing is traded`
-            : `under the ${min} minimum; the next deployment tops the position up to ${target}`;
+            : `under the ${min} minimum; the next rebalance tops the position up to ${target}`;
   /** Shown for information only: the policy acts on leverage, not on profit or loss. */
   const pnlText = hasPosition ? formatUsd(perp.unrealizedPnl) : "no position";
-  /** The "Adds exposure" line of a deploy review. */
+  /** The "Adds exposure" line of a rebalance review. */
   const exposureText = (wouldIncrease: boolean) =>
     wouldIncrease
       ? hasPosition
@@ -157,42 +127,29 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
       : hasPosition
         ? `no, leverage after the deposit is not under ${min}: collateral only`
         : "no";
-  const nextDeployment = paused
-    ? "none while the protocol is paused"
-    : !launch.traderAccount
-      ? "none until the vault's Phoenix trader account is registered"
-      : !onboarded
-        ? "none until Phoenix enables the vault's trader account"
-        : perp.isLiquidatable
-          ? "none while the account is liquidatable"
-          : work.wouldIncrease
-            ? !hasPosition
-              ? work.deployUsdc > 0n
-                ? `adds ${formatUsd(work.deployUsdc)} of collateral and opens the position at ${target}`
-                : `opens the position at ${target} on the collateral already deposited`
+  const nextRebalance = !launch.traderAccount
+    ? "nothing until the vault's Phoenix trader account is registered"
+    : !onboarded
+      ? "nothing until Phoenix enables the vault's trader account"
+      : work.canDeleverage
+        ? state.markIsStale
+          ? `nothing while the Phoenix mark price is stale; once it updates, cuts the position to ${deleverageTo}`
+          : `cuts the position to ${deleverageTo}: leverage ${leverageText(state.leverageBps)} is above ${max}, or the account is liquidatable`
+        : paused
+          ? "nothing while the protocol is paused (a pause stops deposits and new exposure, never a cut)"
+          : perp.isLiquidatable
+            ? "nothing while the account is liquidatable"
+            : work.wouldIncrease
+              ? !hasPosition
+                ? work.deployUsdc > 0n
+                  ? `adds ${formatUsd(work.deployUsdc)} of collateral and opens the position at ${target}`
+                  : `opens the position at ${target} on the collateral already deposited`
+                : work.deployUsdc > 0n
+                  ? `adds collateral and tops the position up to ${target}: leverage ${leverageText(state.leverageBps)} → ${leverageText(leverageAfterDeposit)} after the ${formatUsd(work.deployUsdc)} deposit, then back up to ${target}`
+                  : `tops the position up to ${target}: leverage ${leverageText(state.leverageBps)} is under the ${min} minimum; no new collateral`
               : work.deployUsdc > 0n
-                ? `adds collateral and tops the position up to ${target}: leverage ${leverageText(state.leverageBps)} → ${leverageText(leverageAfterDeposit)} after the ${formatUsd(work.deployUsdc)} deposit, then back up to ${target}`
-                : `tops the position up to ${target}: leverage ${leverageText(state.leverageBps)} is under the ${min} minimum; no new collateral`
-            : work.deployUsdc > 0n
-              ? `adds collateral only: leverage ${leverageText(state.leverageBps)} → ${leverageText(leverageAfterDeposit)} (${formatUsd(work.deployUsdc)} deposited; that is not under the ${min} minimum, so no exposure is added)`
-              : `nothing yet: idle USDC (${formatUsd(state.freeUsdc)}) is under the ${formatUsd(launch.minDepositUsdc)} minimum deposit and leverage is not under the ${min} minimum, so nothing is topped up`;
-
-  /** The pool swap for one tax batch, wrapped in the keeper's `convert_tax`, which pays the keeper fee to `treasuryKey`. */
-  const convertIx = async (keeperKey: PublicKey, treasuryKey: PublicKey, amount: bigint, { quote }: BatchQuote) => {
-    const { dlmm } = market.data!;
-    const transaction = await dlmm.swap({
-      inToken: launch.mint,
-      outToken: USDC_MINT,
-      inAmount: new BN(amount.toString()),
-      minOutAmount: quote.minOutAmount,
-      lbPair: dlmm.pubkey,
-      user: launchAddresses(launch.mint, client.programId).taxAuthority,
-      binArraysPubkey: quote.binArraysPubkey,
-    });
-    const swaps = transaction.instructions.filter((ix) => ix.programId.equals(DLMM_PROGRAM_ID));
-    if (swaps.length !== 1) throw new Error(`Expected one Meteora DLMM swap instruction, found ${swaps.length}.`);
-    return client.convertTaxIx(keeperKey, launch, amount, swaps[0], treasuryKey);
-  };
+                ? `adds collateral only: leverage ${leverageText(state.leverageBps)} → ${leverageText(leverageAfterDeposit)} (${formatUsd(work.deployUsdc)} deposited; that is not under the ${min} minimum, so no exposure is added)`
+                : `nothing yet: idle USDC (${formatUsd(state.freeUsdc)}) is under the ${formatUsd(launch.minDepositUsdc)} minimum deposit and leverage is inside its band`;
 
   const collect = async () => {
     if (!publicKey) return;
@@ -201,11 +158,11 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
     try {
       const sources = await client.findWithheldAccounts(launch.mint);
       if (sources.length === 0 && state.withheldOnMint === 0n) {
-        setCollectNote("No withheld fee tokens were found on this mint or its token accounts. Nothing to collect right now.");
+        setCollectNote("No withheld tax was found on this mint or its token accounts. Nothing to sweep right now.");
         return;
       }
       const signature = await sendTx({
-        title: `Collect withheld ${symbol} tax`,
+        title: `Sweep withheld ${symbol} tax`,
         rows: [
           ["Token accounts swept", `${sources.length}`],
           ["Withheld on the mint itself", tokens(state.withheldOnMint)],
@@ -225,155 +182,65 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
   };
 
   const convert = async () => {
-    if (!publicKey || !isKeeper || !treasury || !market.data || !quoted || batch === 0n) return;
-    const fee = keeperFeeOf(quoted.out);
+    if (!publicKey || !treasury || !market.data || !quoted || batch === 0n) return;
+    const fee = platformFeeOf(quoted.out);
     const signature = await sendTx({
-      title: `Convert ${symbol} tax to USDC`,
+      title: `Sell a batch of ${symbol} tax`,
       rows: [
         ["Tax tokens sold", tokens(batch)],
         ["Pool quote", formatUsd(quoted.out, 6)],
-        [`Keeper fee to the platform (${keeperFeeRate})`, formatUsd(fee, 6)],
+        [`Platform fee (${platformFeeRate})`, formatUsd(fee, 6)],
         ["To the vault", formatUsd(quoted.out - fee, 6)],
         ["Platform treasury", treasury.toBase58()],
         ["Lowest price the program accepts", `${perToken(floor)} per token`],
         ["Pool", market.data.dlmm.pubkey.toBase58()],
+        ["To your wallet", "nothing"],
       ],
       notes: [
-        `Keeper only. The swap is signed by the program for the vault's tax authority, not by your wallet. Of the USDC the pool pays, the program sends ${keeperFeeRate} to the platform treasury as the keeper fee and the rest to the vault.`,
-        "The program itself enforces the batch size and the price floor. If the pool pays less than the floor, the transaction fails and nothing is sold.",
+        `Any wallet can send this. The swap is signed by the program for the vault's tax authority, not by your wallet. Of the USDC the pool pays, the program sends ${platformFeeRate} to the platform treasury as the platform fee and the rest to the vault. You pay the network fee and receive nothing.`,
+        "The program itself fixes the batch size, the cooldown and the price floor. If the pool pays less than the floor, the transaction fails and nothing is sold.",
       ],
       computeUnits: PHOENIX_COMPUTE_UNITS,
-      build: async () => ({ instructions: [await convertIx(publicKey, treasury, batch, quoted)] }),
+      build: async () => {
+        const swap = await buildTaxSwap(
+          market.data!,
+          launch,
+          launchAddresses(launch.mint, client.programId).taxAuthority,
+          batch,
+        );
+        return { instructions: [await client.convertTaxIx(publicKey, launch, batch, swap.instruction, treasury)] };
+      },
     });
     if (signature) onDone();
   };
 
-  const deploy = async () => {
-    if (!publicKey || !isKeeper || !work.canDeploy) return;
+  const rebalance = async () => {
+    if (!publicKey || !work.canRebalance) return;
     const signature = await sendTx({
-      title: "Deploy idle USDC",
-      rows: [
-        ["Deposited as Phoenix collateral", formatUsd(work.deployUsdc, 6)],
-        ["Leverage now", leverageText(state.leverageBps)],
-        ["Leverage after the deposit", leverageText(leverageAfterDeposit)],
-        ["Adds exposure", exposureText(work.wouldIncrease)],
-      ],
+      title: "Rebalance the vault",
+      rows: work.canDeleverage
+        ? [
+            ["Leverage now", leverageText(state.leverageBps)],
+            ["Cuts the position to", deleverageTo],
+            ["To your wallet", "nothing"],
+          ]
+        : [
+            ["Deposited as Phoenix collateral", formatUsd(work.deployUsdc, 6)],
+            ["Leverage now", leverageText(state.leverageBps)],
+            ["Leverage after the deposit", leverageText(leverageAfterDeposit)],
+            ["Adds exposure", exposureText(work.wouldIncrease)],
+            ["To your wallet", "nothing"],
+          ],
       notes: [
-        `Keeper only. The program deposits all idle USDC not reserved for claims as collateral. If there is then no position, or leverage is under ${min}, it buys ${launch.symbol} perp at Phoenix's mark to bring leverage up to ${target}, never above, whether the position is in profit or not. At ${min} or above it adds no exposure.`,
-        "You decide nothing about size, price or destination, and receive nothing.",
+        work.canDeleverage
+          ? `Any wallet can send this. Leverage is above ${max}, so the program closes exactly the part of the position that brings it down to ${deleverageTo}, at Phoenix's mark, and realises the loss on that part. Nothing is withdrawn.`
+          : `Any wallet can send this. The program deposits all idle USDC not reserved for claims as collateral. If there is then no position, or leverage is under ${min}, it buys ${launch.symbol} perp at Phoenix's mark to bring leverage up to ${target}, never above, whether the position is in profit or not. At ${min} or above it adds no exposure.`,
+        "You decide nothing about size, price or destination. You pay the network fee and receive nothing. If the vault's state has changed by the time this lands and there is nothing left to do, the transaction still succeeds and changes nothing.",
       ],
       computeUnits: PHOENIX_COMPUTE_UNITS,
-      build: async () => ({ instructions: [await client.deployIx(publicKey, launch)] }),
+      build: async () => ({ instructions: [await client.rebalanceIx(publicKey, launch)] }),
     });
     if (signature) onDone();
-  };
-
-  /**
-   * The keeper's usual transaction: collect, convert and deploy together. Works out what the vault
-   * will hold after each step, and explains instead of sending when one of the three cannot run.
-   */
-  const collectConvertDeploy = async () => {
-    if (!publicKey || !isKeeper || !treasury) return;
-    setPreparing(true);
-    setCombinedNote(null);
-    try {
-      if (paused) return setCombinedNote("Not possible now: the protocol is paused, so conversion and deployment are refused.");
-      if (!launch.pool || !market.data) {
-        return setCombinedNote(
-          launch.pool
-            ? `Convert is not possible now: the pool could not be read${market.error ? ` (${market.error})` : ""}.`
-            : "Convert is not possible now: the launch has no pool yet, so there is nowhere to sell tax.",
-        );
-      }
-
-      // Collect: what the sweep would add to the tax account.
-      const sources = await client.findWithheldAccounts(launch.mint, COMBINED_COLLECT_SOURCES);
-      const infos = sources.length ? await connection.getMultipleAccountsInfo(sources, "confirmed") : [];
-      let withheld = state.withheldOnMint;
-      sources.forEach((source, index) => {
-        const info = infos[index];
-        if (info) withheld += getTransferFeeAmount(unpackAccount(source, info, TOKEN_2022_PROGRAM_ID))?.withheldAmount ?? 0n;
-      });
-      if (withheld === 0n) {
-        return setCombinedNote(
-          "Collect is not possible now: no withheld fee tokens were found on this mint or its token accounts. Use Convert tax and Deploy below for what is already in the vault.",
-        );
-      }
-
-      // Convert: the batch the program will compute once the sweep has landed.
-      const collected = { ...state, taxTokens: state.taxTokens + withheld, withheldOnMint: 0n };
-      const afterCollect = client.pendingWork(collected, paused);
-      if (afterCollect.convertBatch === 0n) {
-        return setCombinedNote(
-          afterCollect.convertBlockedBy === "cooldown"
-            ? `Convert is not possible now: the cooldown has ${cooldownLeft} slots left (${formatSlots(cooldownLeft, SLOT_MS)}). Collect tax on its own still works.`
-            : `Convert is not possible now: after collecting, the vault would hold ${tokens(collected.taxTokens)} of tax and a batch needs at least ${tokens(launch.minConvertTokens)}. Collect tax on its own still works.`,
-        );
-      }
-      const amount = afterCollect.convertBatch;
-      const batchQuote = await quoteBatch(amount);
-      const price = math.conversionPrice(batchQuote.out, amount);
-      if (price < floor) {
-        return setCombinedNote(
-          `Convert is not possible now: the pool quotes ${perToken(price)} per token for the batch, below the program's floor of ${perToken(floor)}. Collect tax on its own still works.`,
-        );
-      }
-
-      // Deploy: what the program would do with the vault's USDC once the conversion has landed.
-      const fee = keeperFeeOf(batchQuote.out);
-      const toVault = batchQuote.out - fee;
-      const converted = {
-        ...collected,
-        idleUsdc: state.idleUsdc + toVault,
-        freeUsdc: state.freeUsdc + toVault,
-      };
-      const afterConvert = client.pendingWork(converted, paused);
-      if (!afterConvert.canDeploy || state.markIsStale) {
-        const why = !launch.traderAccount
-          ? "the vault's Phoenix trader account is not registered yet"
-          : !onboarded
-            ? "Phoenix has not enabled the vault's trader account yet"
-            : state.markIsStale
-              ? "the Phoenix mark price is stale"
-              : perp.isLiquidatable
-                ? "the Phoenix account is liquidatable"
-                : `the vault would hold ${formatUsd(converted.freeUsdc)} of idle USDC, under the ${formatUsd(launch.minDepositUsdc)} minimum deposit, and there is nothing to top up`;
-        return setCombinedNote(`Deploy is not possible now: ${why}. Collect tax and Convert tax still work on their own.`);
-      }
-      const leverageAfter = math.leverageBps(perp.notional, perp.equity + afterConvert.deployUsdc);
-
-      const signature = await sendTx({
-        title: `Collect, convert and deploy ${symbol} tax`,
-        rows: [
-          ["1. Collected into the vault's tax account", `${tokens(withheld)} from the mint and ${sources.length} token accounts`],
-          ["2. Tax tokens sold", tokens(amount)],
-          ["Pool quote", formatUsd(batchQuote.out, 6)],
-          [`Keeper fee to the platform (${keeperFeeRate})`, formatUsd(fee, 6)],
-          ["To the vault", formatUsd(toVault, 6)],
-          ["Lowest price the program accepts", `${perToken(floor)} per token`],
-          ["3. Deposited as Phoenix collateral", `about ${formatUsd(afterConvert.deployUsdc, 6)}`],
-          ["Leverage now → after the deposit", `${leverageText(state.leverageBps)} → ${leverageText(leverageAfter)}`],
-          ["Adds exposure", exposureText(afterConvert.wouldIncrease)],
-        ],
-        notes: [
-          "Keeper only. One transaction: collect_tax, convert_tax and deploy, in that order. If any of the three fails, none of them happens.",
-          `The program computes the batch, enforces the price floor, pays the ${keeperFeeRate} keeper fee to the platform treasury, sends the rest of the USDC to the vault and then to the vault's own Phoenix account, and sizes and prices any order. Your wallet receives nothing.`,
-        ],
-        computeUnits: PHOENIX_COMPUTE_UNITS,
-        build: async () => ({
-          instructions: [
-            await client.collectTaxIx(publicKey, launch, sources),
-            await convertIx(publicKey, treasury, amount, batchQuote),
-            await client.deployIx(publicKey, launch),
-          ],
-        }),
-      });
-      if (signature) onDone();
-    } catch (error) {
-      setCombinedNote(errorMessage(error));
-    } finally {
-      setPreparing(false);
-    }
   };
 
   const venueAction = async (
@@ -389,13 +256,13 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
 
   const convertStatus: ReactNode =
     paused
-      ? "The protocol is paused; conversions are refused."
+      ? "The protocol is paused; tax sales are refused."
       : work.convertBlockedBy === "no-pool"
         ? "The launch has no pool yet, so there is nowhere to sell tax."
         : work.convertBlockedBy === "below-threshold"
           ? `Collected tax is ${tokens(state.taxTokens)}; a batch needs at least ${tokens(launch.minConvertTokens)}.`
           : work.convertBlockedBy === "cooldown"
-            ? `Cooldown: the next conversion is allowed in ${cooldownLeft} slots (${formatSlots(cooldownLeft, SLOT_MS)}).`
+            ? `Cooldown: the next sale is allowed in ${cooldownLeft} slots (${formatSlots(cooldownLeft, SLOT_MS)}).`
             : market.error && !market.data
               ? `The pool could not be read: ${market.error}`
               : convertQuote.error
@@ -406,65 +273,51 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
                       <>
                         Next batch: {tokens(batch)}. The pool quotes {formatUsd(quoted.out, 6)} for it
                         {quotedPrice !== null && <> ({perToken(quotedPrice)} per token)</>}:{" "}
-                        {formatUsd(keeperFeeOf(quoted.out), 6)} ({keeperFeeRate}) is the platform&apos;s keeper fee and{" "}
-                        {formatUsd(quoted.out - keeperFeeOf(quoted.out), 6)} goes to the vault. The program itself enforces the batch size and the price floor ({perToken(floor)} per
-                        token now), so the keeper cannot sell the batch cheaply.
+                        {formatUsd(platformFeeOf(quoted.out), 6)} ({platformFeeRate}) is the platform fee and{" "}
+                        {formatUsd(quoted.out - platformFeeOf(quoted.out), 6)} goes to the vault. The program itself
+                        fixes the batch size and the price floor ({perToken(floor)} per token now), so whoever sends
+                        this cannot sell the batch cheaply or keep any of it.
                         {belowFloor && (
                           <strong className="warn"> The current quote is below that floor: the program would refuse this sale.</strong>
                         )}
                       </>
                     );
 
-  const deployStatus = paused
-    ? "The protocol is paused; deployment is refused."
-    : !launch.traderAccount
-      ? "The vault's Phoenix trader account is not registered yet."
-      : !onboarded
-        ? "Phoenix has not enabled the vault's trader account yet, so deploy cannot work."
-        : state.markIsStale
-          ? "The Phoenix mark price is stale; deployment is refused until it updates."
-          : `Next deployment ${nextDeployment}.`;
-
   const needWallet = !publicKey;
   const convertReady = batch > 0n && !!quoted && !belowFloor && !!treasury;
-  const deployReady = work.canDeploy && !state.markIsStale;
-  const keeperPending = batch > 0n || work.canDeploy;
-  /** Badge of a keeper-only step: the keeper sees whether it can send, everyone else whether it is waiting. */
-  const keeperBadge = (ready: boolean, pending: boolean) =>
-    isKeeper ? (ready ? "Can be sent now" : "Not possible now") : pending ? "Waiting for the keeper" : "Nothing to do now";
+  // a stale mark stops orders, not deposits
+  const rebalanceReady = work.canDeleverage
+    ? !state.markIsStale
+    : work.canDeploy && (work.deployUsdc > 0n || !state.markIsStale);
+  const pending = batch > 0n || work.canRebalance;
+  const badge = (ready: boolean) => (needWallet ? "Any wallet" : ready ? "Can be sent now" : "Nothing to do now");
 
   return (
-    <Panel id={ACTIVITY_ANCHOR} title="Vault activity" aside="run by the Terp keeper">
+    <Panel id={ACTIVITY_ANCHOR} title="Vault upkeep" aside="open to any wallet">
       <p className="muted small">
-        The Terp keeper, the launchpad operator&apos;s key, sweeps the withheld tax, sells it in the pool and deploys the
-        USDC, usually all in one transaction. The keeper decides <strong>when</strong>; the program fixes the batch
-        size, the price floor, the {keeperFeeRate} keeper fee, the order&apos;s size and price, and where the money goes. The keeper cannot withdraw
-        anything or redirect funds. If it is offline, tax simply waits: collecting tax, redemptions, deleveraging and
-        claim payouts do not depend on it and stay open to any wallet.
+        Nobody operates this vault and no key has a special role. Sweeping the withheld tax, selling it in the pool
+        and rebalancing the position are steps any wallet can send. Whoever sends one decides only{" "}
+        <strong>when</strong>: the program fixes the batch size, the price floor, the {platformFeeRate} platform fee,
+        the order&apos;s size and price, and where the money goes, and the sender receives nothing. On Terp these
+        steps travel with trades: a buy or sell made in the trade panel carries them when there is work. An open bot
+        that anyone can run does the same for tokens nobody is trading here. If neither happens, tax simply waits and
+        the position is not adjusted; redemptions and claim payouts never depend on it. The buttons below send the
+        same steps by hand.
       </p>
 
       <Rows
         rows={[
           [
-            "Terp keeper",
-            keeper ? <Address key="keeper" value={keeper} full /> : "unknown",
-            "the only key that can convert tax and deploy it; it cannot withdraw",
-          ],
-          [
-            "Keeper fee",
-            `${keeperFeeRate} of each conversion`,
+            "Platform fee",
+            `${platformFeeRate} of each tax sale`,
             "of the USDC the pool pays, to the Terp platform treasury; the rest goes to the vault; fixed for this launch",
           ],
           [
-            "Keeper work",
+            "Upkeep waiting",
+            pending ? "yes: the next trade on Terp carries it, or send it below" : "nothing",
             paused
-              ? "paused by the protocol admin"
-              : keeperPending
-                ? isKeeper
-                  ? "pending: you are connected as the keeper"
-                  : "pending: waiting for the keeper"
-                : "nothing pending",
-            "tax ready to convert, or USDC ready to deploy",
+              ? "the protocol is paused: tax sales, deposits and new exposure are refused; a cut is not"
+              : "tax ready to sell, or a position to deposit into, top up or cut",
           ],
           [
             "Collected tax waiting to be sold",
@@ -472,21 +325,21 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
             `one batch sells at most ${tokens(launch.maxConvertTokens)}`,
           ],
           [
-            "Withheld on the mint, not collected yet",
+            "Withheld on the mint, not swept yet",
             tokens(state.withheldOnMint),
-            "more may be withheld in individual token accounts; Collect tax finds those",
+            "more may be withheld in individual token accounts; Sweep tax finds those",
           ],
           [
-            "Conversion cooldown",
+            "Sale cooldown",
             work.convertBlockedBy === "cooldown"
               ? `${cooldownLeft} slots left (${formatSlots(cooldownLeft, SLOT_MS)})`
               : launch.tokensConverted === 0n
-                ? "none yet (no conversion so far)"
+                ? "none yet (no sale so far)"
                 : "elapsed",
-            `${launch.convertCooldownSlots} slots between conversions`,
+            `${launch.convertCooldownSlots} slots between tax sales`,
           ],
           [
-            "Idle USDC available to deploy",
+            "Idle USDC available to deposit",
             `${formatUsd(state.freeUsdc)} of ${formatUsd(launch.minDepositUsdc)} needed`,
             "idle USDC less outstanding claims",
           ],
@@ -508,107 +361,60 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
         rows={[
           ["Leverage now", leverageText(state.leverageBps), leveragePosition],
           ["Target", target, "what the vault aims to hold; exposure is only ever added up to this"],
-          ["Minimum", min, `under this after a deposit, a deployment buys exposure back up to ${target}, in profit or not`],
-          ["Deleverage threshold", max, `above this any wallet can cut the position to ${deleverageTo}`],
+          ["Minimum", min, `under this after a deposit, a rebalance buys exposure back up to ${target}, in profit or not`],
+          ["Cut threshold", max, `above this a rebalance cuts the position to ${deleverageTo}`],
           ["Position PnL", pnlText, "for information; the policy acts on leverage, not on profit or loss"],
-          ["Next deployment", nextDeployment, "from the USDC idle in the vault now; tax not yet converted adds to it"],
+          ["Next rebalance", nextRebalance, "from the USDC idle in the vault now; tax not yet sold adds to it"],
         ]}
       />
       <p className="muted small">
-        The vault aims to keep its position open and close to {target}. Each deployment first adds the new USDC as
-        collateral, which lowers leverage and moves the liquidation price further away. If leverage is then under{" "}
-        {min}, the deployment buys exposure back up to {target}, with or without new tax and whether the position is
-        in profit or not, so gains are compounded into a larger position. Between {min} and {target} nothing is
-        traded, which avoids paying taker fees for small drifts. Between {target} and {max}, usually after{" "}
-        {launch.symbol} fell, tax is collateral only and pulls leverage back down. Above {max} any wallet can cut the
-        position to {deleverageTo}. The same rule opens the first position and re-opens one that was closed or
-        liquidated.
+        The vault aims to keep its position open and close to {target}. A rebalance first adds the vault&apos;s idle
+        USDC as collateral, which lowers leverage and moves the liquidation price further away. If leverage is then
+        under {min}, it buys exposure back up to {target}, with or without new tax and whether the position is in
+        profit or not, so gains are compounded into a larger position. Between {min} and {target} nothing is traded,
+        which avoids paying taker fees for small drifts. Between {target} and {max}, usually after {launch.symbol}{" "}
+        fell, tax is collateral only and pulls leverage back down. Above {max} a rebalance cuts the position to{" "}
+        {deleverageTo}. The same rule opens the first position and re-opens one that was closed or liquidated.
       </p>
 
-      {needWallet && <Notice><p>Connect a wallet to send the steps that are open to any wallet.</p></Notice>}
+      {needWallet && <Notice><p>Connect a wallet to send any of these steps. Every one of them is open to any wallet.</p></Notice>}
 
       <ul className="events work">
-        {isKeeper && (
-          <Work
-            title="Collect, convert and deploy"
-            badge="Checked when you click"
-            status={
-              combinedNote ??
-              `The keeper's usual transaction: sweeps withheld tax (the mint and up to ${COMBINED_COLLECT_SOURCES} token accounts), sells the batch and deploys the USDC, all three in one transaction. If one of them is not possible right now, nothing is sent and this line says which.`
-            }
-            action={{
-              label: preparing ? "Checking each step…" : "Collect, convert and deploy",
-              enabled: !preparing,
-              onClick: collectConvertDeploy,
-            }}
-          />
-        )}
         <Work
-          title="Collect tax"
+          title="Sweep tax"
           badge={needWallet ? "Any wallet" : "Checked when you click"}
           status={
             collectNote ??
-            `Sweeps withheld ${formatBps(launch.transferFeeBps)} transfer-tax tokens from the mint and from token accounts into the vault's tax account. Open to any wallet; it is what makes a conversion possible.`
+            `Sweeps withheld ${formatBps(launch.transferFeeBps)} transfer-tax tokens from the mint and from token accounts into the vault's tax account. It is what makes a sale possible. You pay the network fee and receive nothing.`
           }
           action={{
-            label: collecting ? "Finding withheld fees…" : "Collect tax",
+            label: collecting ? "Finding withheld tax…" : "Sweep tax",
             enabled: !needWallet && !collecting,
             onClick: collect,
           }}
         />
         <Work
-          title="Convert tax"
-          badge={keeperBadge(convertReady, batch > 0n)}
-          good={isKeeper && convertReady}
+          title="Sell tax batch"
+          badge={badge(convertReady)}
+          good={!needWallet && convertReady}
           status={
             <>
-              {convertStatus}
-              {!isKeeper && batch > 0n && " Waiting for the keeper to send it; there is nothing to click."}
+              {convertStatus} You pay the network fee and receive nothing.
             </>
           }
-          action={isKeeper ? { label: "Convert tax", enabled: convertReady, onClick: convert } : undefined}
+          action={{ label: "Sell tax batch", enabled: !needWallet && convertReady, onClick: convert }}
         />
         <Work
-          title="Deploy"
-          badge={keeperBadge(deployReady, work.canDeploy)}
-          good={isKeeper && deployReady}
-          status={
-            <>
-              {deployStatus}
-              {!isKeeper && work.canDeploy && " Waiting for the keeper to send it; there is nothing to click."}
-            </>
-          }
-          action={isKeeper ? { label: "Deploy", enabled: deployReady, onClick: deploy } : undefined}
-        />
-        <Work
-          title="Deleverage"
-          badge={work.canDeleverage ? "Can be sent now" : "Not possible now"}
-          good={work.canDeleverage}
-          status={
-            work.canDeleverage
-              ? `Leverage is above ${max} or the account is liquidatable. Cuts the position to ${deleverageTo}, not all the way to ${target}, so less of the loss is realised. Open to any wallet.`
-              : `Only possible when leverage is above ${max} or the account is liquidatable. Open to any wallet.`
-          }
-          action={{
-            label: "Deleverage",
-            enabled: !needWallet && work.canDeleverage,
-            onClick: () =>
-              venueAction(
-                "Deleverage the vault",
-                [
-                  ["Leverage now", leverageText(state.leverageBps)],
-                  ["Cuts the position to", deleverageTo],
-                ],
-                `The program closes exactly the part of the position that brings leverage down to ${deleverageTo}, at Phoenix's mark, and realises the loss on that part. Nothing is withdrawn and you receive nothing; you pay the network fee.`,
-                async () => ({ instructions: [await client.deleverageIx(publicKey!, launch)] }),
-                PHOENIX_COMPUTE_UNITS,
-              ),
-          }}
+          title="Rebalance"
+          badge={badge(rebalanceReady)}
+          good={!needWallet && rebalanceReady}
+          status={`Right now a rebalance does this: ${nextRebalance}. The program decides the amounts and prices; you pay the network fee and receive nothing.`}
+          action={{ label: "Rebalance", enabled: !needWallet && rebalanceReady, onClick: rebalance }}
         />
         <Work
           title="Unwrap"
-          badge={work.canonicalToUnwrap > 0n ? "Can be sent now" : "Not possible now"}
-          good={work.canonicalToUnwrap > 0n}
+          badge={badge(work.canonicalToUnwrap > 0n)}
+          good={!needWallet && work.canonicalToUnwrap > 0n}
           status="Converts collateral tokens that arrived from Phoenix into USDC in the vault. Open to any wallet."
           action={{
             label: "Unwrap",
@@ -624,8 +430,8 @@ export function VaultActivityPanel({ state, symbol, market, onDone }: Props) {
         />
         <Work
           title="Fund claims"
-          badge={work.claimsShortfall > 0n ? "Can be sent now" : "Not possible now"}
-          good={work.claimsShortfall > 0n}
+          badge={badge(work.claimsShortfall > 0n)}
+          good={!needWallet && work.claimsShortfall > 0n}
           status={
             state.trader?.hasQueuedWithdrawal
               ? "A Phoenix withdrawal is already queued for this vault; nothing to re-request until it arrives."

@@ -8,7 +8,7 @@ use crate::{
     error::VaultError,
     events::{CanonicalUnwrapped, ClaimsFunded, Deleveraged, Deployed},
     math,
-    phoenix::{Fill, PerpView},
+    phoenix::{Fill, PerpView, TraderHeader},
     state::{Direction, Launch, ProtocolConfig},
 };
 
@@ -16,8 +16,8 @@ use crate::{
 /// Phoenix global configuration.
 #[derive(Accounts)]
 pub struct Deploy<'info> {
-    pub keeper: Signer<'info>,
-    #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = keeper @ VaultError::Unauthorized)]
+    pub caller: Signer<'info>,
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, ProtocolConfig>,
     #[account(mut, seeds = [LAUNCH_SEED, launch.mint.as_ref()], bump = launch.bump)]
     pub launch: Box<Account<'info, Launch>>,
@@ -25,7 +25,8 @@ pub struct Deploy<'info> {
     pub ember: EmberAccounts<'info>,
 }
 
-/// Puts the vault's idle USDC to work. Keeper only; it decides when, the program decides what.
+/// Puts the vault's idle USDC to work. Open to anyone: the caller decides when, the program
+/// decides what. Fails when there is nothing to do; `rebalance` is the variant that does not.
 ///
 /// The aim is a position that stays open and stays close to target leverage (5x):
 ///
@@ -55,12 +56,12 @@ pub fn deploy<'info>(ctx: Context<'info, Deploy<'info>>) -> Result<()> {
     record_deploy(&mut ctx.accounts.launch, event)
 }
 
-/// A deployment, for the keeper's instruction and for the transfer hook. `before` is the
+/// A deployment, for `deploy` and for `rebalance`. `before` is the
 /// account as Phoenix reports it before any deposit.
 ///
 /// With `lenient`, every condition under which there is nothing safe to do returns `None`
-/// before anything has moved, where the keeper's instruction returns an error: the hook must
-/// not fail a transfer because the vault had no work.
+/// before anything has moved, where `deploy` returns an error: `rebalance`
+/// rides along in a user's trade and must not fail it because the vault had no work.
 pub(crate) fn run_deploy<'info>(
     launch: &Account<'info, Launch>,
     venue: &Venue<'_, 'info>,
@@ -167,42 +168,6 @@ fn check_after_buy(launch: &Launch, after: &PerpView) -> Result<()> {
     Ok(())
 }
 
-/// The transfer hook's share of a deployment: no deposit, only the order that takes leverage
-/// back up to target. Returns `None`, before anything has moved, whenever there is nothing safe
-/// to do.
-pub(crate) fn run_top_up(
-    launch: &Account<Launch>,
-    desk: &Desk,
-    before: PerpView,
-) -> Result<Option<Deployed>> {
-    if before.is_liquidatable() {
-        return Ok(None);
-    }
-    let lots = top_up_lots(launch, &before)?;
-    if lots == 0 || !desk.mark_is_fresh()? {
-        return Ok(None);
-    }
-    let mint_key = launch.mint;
-    let seeds: &[&[u8]] = &[LAUNCH_SEED, mint_key.as_ref(), &[launch.bump]];
-    let fill = desk.order(true, lots, before.mark_price_ticks, seeds)?;
-    let after = desk.view()?;
-    check_after_buy(launch, &after)?;
-    Ok(Some(Deployed {
-        launch: launch.key(),
-        deposited: 0,
-        leverage_bps_before: before.leverage_bps(),
-        unrealized_pnl: before.unrealized_pnl,
-        increased: true,
-        requested_base_lots: lots,
-        filled_base_lots: fill.base_lots,
-        filled_quote_lots: fill.quote_lots,
-        base_lots_after: after.base_lots,
-        notional_after: after.notional,
-        equity_after: after.equity(),
-        leverage_bps_after: after.leverage_bps(),
-    }))
-}
-
 pub(crate) fn record_deploy(launch: &mut Account<Launch>, event: Deployed) -> Result<()> {
     launch.usdc_deposited = launch
         .usdc_deposited
@@ -210,6 +175,65 @@ pub(crate) fn record_deploy(launch: &mut Account<Launch>, event: Deployed) -> Re
         .ok_or(VaultError::MathOverflow)?;
     launch.last_rebalance_slot = Clock::get()?.slot;
     emit!(event);
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct Rebalance<'info> {
+    pub caller: Signer<'info>,
+    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Account<'info, ProtocolConfig>,
+    #[account(mut, seeds = [LAUNCH_SEED, launch.mint.as_ref()], bump = launch.bump)]
+    pub launch: Box<Account<'info, Launch>>,
+    pub phoenix: PhoenixAccounts<'info>,
+    pub ember: EmberAccounts<'info>,
+}
+
+/// Keeps the position in its leverage band. Open to anyone and built to ride along in another
+/// transaction, such as a user's trade of the token: it does whatever `deleverage` or `deploy`
+/// would do right now, and when there is nothing safe to do it succeeds without doing anything,
+/// so it never fails the transaction it travels in for lack of work.
+///
+/// The caller supplies nothing but the moment. Sizes, prices and destinations are the same
+/// program-chosen ones as in `deploy` and `deleverage`.
+pub fn rebalance<'info>(ctx: Context<'info, Rebalance<'info>>) -> Result<()> {
+    let accounts = &ctx.accounts;
+    // until Phoenix has enabled the launch's trader account, its deposits and orders fail
+    if !accounts.launch.is_trader_registered()
+        || !TraderHeader::load(&accounts.phoenix.trader_account)?.is_onboarded()
+    {
+        return Ok(());
+    }
+    let (deployed, cut) = {
+        let venue = Venue::load(
+            &accounts.launch,
+            &accounts.phoenix,
+            &accounts.ember,
+            ctx.remaining_accounts,
+        )?;
+        let before = venue.view()?;
+        if before.notional > 0 && before.leverage_bps() > accounts.launch.max_leverage_bps as u64 {
+            let cut = run_deleverage(
+                &accounts.launch,
+                &venue.desk(),
+                before,
+                accounts.caller.key(),
+                true,
+            )?;
+            (None, cut)
+        } else if accounts.config.paused {
+            // pausing stops deposits and new exposure; it never stops a cut
+            (None, None)
+        } else {
+            (run_deploy(&accounts.launch, &venue, before, true)?, None)
+        }
+    };
+    if let Some(event) = deployed {
+        record_deploy(&mut ctx.accounts.launch, event)?;
+    }
+    if let Some(event) = cut {
+        emit!(event);
+    }
     Ok(())
 }
 
@@ -225,7 +249,7 @@ pub struct VenueOp<'info> {
 /// When leverage is above the launch maximum (6x) or the account is liquidatable, anyone may
 /// close the part of the position that brings leverage down to the launch's deleverage level
 /// (5.5x). The size is computed here; the caller cannot close more, and nothing is withdrawn.
-/// This is what keeps the position open through a fall, and it does not depend on the keeper.
+/// This is what keeps the position open through a fall, and anyone can trigger it.
 pub fn deleverage<'info>(ctx: Context<'info, VenueOp<'info>>) -> Result<()> {
     let accounts = &ctx.accounts;
     let venue = Venue::load(
@@ -247,7 +271,7 @@ pub fn deleverage<'info>(ctx: Context<'info, VenueOp<'info>>) -> Result<()> {
     Ok(())
 }
 
-/// A deleverage, for the open instruction and for the transfer hook; `lenient` as in
+/// A deleverage, for `deleverage` and for `rebalance`; `lenient` as in
 /// `run_deploy`.
 pub(crate) fn run_deleverage(
     launch: &Account<Launch>,
@@ -288,7 +312,7 @@ pub(crate) fn run_deleverage(
     };
     let fill = venue.order(false, lots, before.mark_price_ticks, seeds)?;
     let after = venue.view()?;
-    // inside a transfer, an order the book could not fill is not a reason to fail the transfer
+    // riding along in a trade, an order the book could not fill is not a reason to fail it
     require!(
         lenient || after.notional < before.notional,
         VaultError::ReductionIncomplete

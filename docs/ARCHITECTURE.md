@@ -9,15 +9,18 @@ This is the tax model of a StonkFun reward launch (permanent 1% or 3% Token-2022
 swept and sold in the token's own pool) with the operator wallet replaced by a program-owned
 vault, and the payout to holders replaced by a leveraged position they can redeem against.
 
-**One keeper.** The launchpad operator's key is the only one that may sell tax and deploy the
-proceeds. It chooses the moment and nothing else.
+**No keeper.** No key has a role in upkeep. Sweeping tax, selling it and adjusting the position
+are open to any wallet; the caller chooses the moment and nothing else. Trades made on Terp's
+site carry those steps, and an open bot covers tokens nobody trades there (see "How upkeep
+happens").
 
 ```
-     traders                         keeper (operator)                holders
-        |                                   |                            |
-        | transfers: tax withheld           | collect + convert + deploy | redeem
-        | in recipient accounts             | in one transaction         | (one transaction)
-        v                                   v                            v
+     traders                          any wallet                      holders
+        |                                  |                             |
+        | transfers: tax withheld          | collect + convert +         | redeem
+        | in recipient accounts            | rebalance, often inside     | (one transaction)
+        |                                  | a trade's own transaction   |
+        v                                  v                             v
   +-----------------------------------------------------------------------------------+
   |  terp program                                                                     |
   |                                                                                   |
@@ -28,7 +31,7 @@ proceeds. It chooses the moment and nothing else.
   |  Tax PDA     ["tax", launch]       holds swept tax tokens; signs the tax sale only|
   |  Claim PDA   ["claim", launch, owner]    USDC owed after a queued withdrawal      |
   |  Market PDA  ["market", asset]     a listed leveraged asset (SOL, BTC, ...)       |
-  |  Config PDA  ["config"]            admin, keeper, treasury, AMM, pause            |
+  |  Config PDA  ["config"]            admin, treasury, platform fee, AMM, pause      |
   +-----------------------------------------------------------------------------------+
         |  CPI                      |  CPI                         |  CPI
         v                           v                              v
@@ -39,14 +42,54 @@ proceeds. It chooses the moment and nothing else.
 ## Why the tax is swept instead of sent
 
 Token-2022's transfer-fee extension withholds the tax inside the recipient's token account. It
-has no option to deliver it elsewhere, and a transfer hook cannot move it either: a hook runs
-while the token program is mid-transfer, and Solana does not allow a program to be called again
-while it is already on the call stack. `collect_tax` is the sweep. It is open to anyone, its
-destination is fixed, and the keeper puts it in the same transaction as the sale and the deposit.
+has no option to deliver it elsewhere, and a transfer hook cannot take or sell the tokens being
+transferred either (see "Why not a transfer hook" in FEASIBILITY.md). `collect_tax` is the
+sweep. It is open to anyone and its destination is fixed.
 
 The swept tokens sit in an account owned by a second PDA, the Tax PDA, which signs the sale and
 nothing else. That keeps the swap instruction away from the PDA that owns the USDC and the
 position. From the outside it is still one vault per token.
+
+## How upkeep happens
+
+Three instructions turn tax into the position and keep the position in its band: `collect_tax`,
+`convert_tax` and `rebalance`. None of them needs a role. There are two senders in practice.
+
+**Trades on Terp.** When a user buys or sells in the frontend's trade panel, the app appends to
+the user's swap, in the same transaction, whichever of these there is work for:
+
+1. the user's own DLMM swap, unchanged and first;
+2. `convert_tax` for the batch of tax already in the vault's tax account, if a batch is ready and
+   the pool's quote is above the program's price floor;
+3. `collect_tax` for the token accounts the swap itself pays tax into, plus a few found by a
+   periodic scan, so the next trade has a batch to sell;
+4. `rebalance`, if the vault has USDC to deposit (including what step 2 brings in) or a position
+   to top up or cut.
+
+Before the user is asked to sign, the app simulates the combined transaction. If it fails,
+does not fit in one packet, or uses more than 1.35M compute units, steps are left out (the tax
+sale first, then the sweep, then the rebalance) until what remains passes, down to the plain
+swap. The review dialog lists what rides along. The user pays the network fee and receives none
+of the proceeds. The sale comes before the sweep because the program fixes the batch from the
+tax balance at that moment; a sweep landing first would change it.
+
+`rebalance` is built for this: when there is nothing safe to do it succeeds without doing
+anything, so it cannot fail a trade for lack of work. `convert_tax` and `collect_tax` are strict
+and fail when they have nothing to do. Simulation catches that at signing time, but a
+transaction can still fail if the vault changes before it lands, for example when someone
+else's transaction sells the same batch first. The user then sees a failed transaction and
+retries; nothing is lost but the network fee.
+
+**The crank.** `keeper/` (the folder name is historical) is a small bot that sends the same three
+steps, in one transaction when possible, for every launch on a timer, together with claim
+payouts and unwraps. It has no key the program knows about: any funded wallet can run it, and
+more than one can run at once. It exists for tokens nobody is trading through Terp's site.
+
+If neither happens, withheld tax stays where it is, collected tax stays unsold, and the position
+is neither topped up nor cut. Redemption does not depend on any of it.
+
+Trades made on other frontends or aggregators pay the transfer tax like any other transfer, but
+carry no upkeep.
 
 ## Repository
 
@@ -56,7 +99,7 @@ position. From the outside it is still one vault per token.
 | `programs/mock-swap` | **MOCK** constant-product AMM, used only by local tests in place of DLMM. Never deployed. |
 | `tests-litesvm` | Integration tests against the real Phoenix, Ember, Hawkeye and Token-2022 programs. |
 | `packages/sdk` | TypeScript: PDAs, instruction builders, vault state, history, a bigint mirror of `math.rs`. |
-| `keeper` | The operator's keeper service. Dry-run by default. |
+| `keeper` | The crank: an open bot that sends upkeep transactions. It has no on-chain role; any funded wallet can run it. The folder name is historical. Dry-run by default. |
 | `scripts` | Operator scripts: read-only preflight, config init, market listing, lookup table, Phoenix onboarding, pause. `scripts/localnet` runs a whole launch on a local validator against the real DLMM program. |
 | `app` | Next.js frontend. |
 
@@ -72,14 +115,14 @@ position. From the outside it is still one vault per token.
 | Other mint extensions | none allowed (no permanent delegate, hook, etc.) | `create_launch` |
 | Vault USDC, canonical account, Phoenix trader | the Launch PDA | only program instructions sign for it |
 | Tax tokens | the Tax PDA | signs the tax sale only; holds nothing else |
-| Launch policy (tax tier, leveraged asset, leverage limits, keeper fee, fees, thresholds) | nobody; fixed at creation | no instruction changes a `Launch`'s policy |
+| Launch policy (tax tier, leveraged asset, leverage limits, platform fee, fees, thresholds) | nobody; fixed at creation | no instruction changes a `Launch`'s policy |
 | List of leveraged assets | the admin can add a market; a listing can never be edited or removed | `add_market`; a launch copies its market at creation |
 | Pool address | set once by the creator | `set_pool` |
 | LP positions seeded at launch | the Launch PDA, with a lock that never releases; the creator's wallet is their operator and can deposit and trigger fee claims, not withdraw | Meteora DLMM, when the launch is made through the frontend's create flow. **Not enforced by this program**; the frontend reads it from the position accounts. See SECURITY.md |
 | Swap fees of those positions | the Launch PDA's USDC account (the vault) | Meteora DLMM: a claim can only be sent by the operator and only pays the fee owner |
-| Keeper | a key named in the config | may call `convert_tax` and `deploy`; neither takes an amount, a price or a destination from it |
-| Treasury | a wallet named in the config | receives the keeper fee inside `convert_tax` and residual USDC of finished launches; signs nothing |
-| Admin | a key named in the config | may rotate admin/keeper/treasury, set the keeper fee for future launches (at most 20%), list markets and pause; touches no token account or launch |
+| Upkeep (`collect_tax`, `convert_tax`, `rebalance`, `deploy`, `deleverage`) | nobody: open to any wallet | none of them takes an amount, a price or a destination from the caller, and none pays the caller |
+| Treasury | a wallet named in the config | receives the platform fee inside `convert_tax` and residual USDC of finished launches; signs nothing |
+| Admin | a key named in the config | may rotate admin/treasury, set the platform fee for future launches (at most 20%), list markets and pause; touches no token account or launch |
 | Program upgrade authority | the deployer | Solana loader. **Whoever holds it can change every rule above.** See DEPLOYMENT.md. |
 
 ## Instructions
@@ -90,25 +133,27 @@ position. From the outside it is still one vault per token.
 | `set_pool` | creator, once | records the launch's pool | which pool, as long as it belongs to the configured AMM |
 | `register_trader` | anyone | creates the launch's Phoenix trader account | nothing |
 | `collect_tax` | anyone | sweeps withheld tax into the vault's tax account | which token accounts to sweep |
-| `convert_tax` | **keeper** | sells one tax batch through the pool; pays the launch's keeper fee to the treasury and the rest to the vault | the moment, and the swap route inside the allowlisted AMM; not the size, not the minimum price, not the split, not either destination |
-| `deploy` | **keeper** | deposits idle USDC as margin; if there is no position or leverage is then under 4.75x, tops exposure up to 5x | the moment |
-| `deleverage` | anyone, above 6x | closes the part of the position that brings leverage down to 5.5x | nothing |
+| `convert_tax` | anyone | sells one tax batch through the pool; pays the launch's platform fee to the treasury and the rest to the vault | the moment, and the swap route inside the allowlisted AMM; not the size, not the minimum price, not the split, not either destination |
+| `rebalance` | anyone | does what the position needs now: above 6x, cuts it to 5.5x; otherwise, unless paused, deposits idle USDC as margin and tops exposure up to 5x when there is no position or leverage is under 4.75x. Succeeds doing nothing when there is nothing safe to do | the moment |
+| `deploy` | anyone | the deposit and top-up half of `rebalance`, on its own; fails when there is nothing to do | the moment |
+| `deleverage` | anyone, above 6x | the cut half of `rebalance`, on its own; fails when leverage is not above 6x | the moment |
 | `redeem` | the holder | burns tokens, frees liquidity if needed, pays USDC | the amount and their minimum payout |
 | `pay_claim` | anyone | pays a claim to its owner from idle USDC | nothing |
 | `fund_claims` | anyone | re-requests from Phoenix what claims are short of | nothing |
 | `unwrap_canonical` | anyone | canonical tokens in the vault to USDC in the vault | nothing |
 | `sweep_residual` | anyone | vault USDC to the treasury | only when supply and claims are zero |
-| `init_config`, `update_config` | admin | roles, the keeper fee for future launches, pause | no token accounts |
+| `init_config`, `update_config` | admin | admin and treasury, the platform fee for future launches, pause | no token accounts |
 | `add_market` | admin | lists a Phoenix perp market as a leveraged asset | the orderbook must be a Phoenix account and the spline its PDA; tick size and asset id are taken on trust and checked off-chain by `preflight` |
 
-`collect_tax`, `convert_tax` and `deploy` are three instructions that the keeper sends in one
-transaction. A test runs exactly that against the real Phoenix programs.
+`collect_tax`, `convert_tax` and `rebalance` (or `deploy`) are separate instructions of one
+program, so they compose in one transaction, on their own or behind a user's swap.
 
-### What the program still checks when the keeper calls
+### What the program checks, whoever calls
 
-The keeper is trusted for timing only. The program behaves as if it were not trusted for the rest.
+The caller is assumed to be anyone, including someone trying to profit. Nothing depends on the
+caller being honest or careful.
 
-**`convert_tax`.** The keeper supplies the AMM's own swap instruction; the program signs it as the
+**`convert_tax`.** The caller supplies the AMM's own swap instruction; the program signs it as the
 Tax PDA, which owns nothing but the tax tokens. Then it checks the effect:
 
 - size: the batch is the tax balance capped at `max_convert_tokens`, available only at or above
@@ -118,22 +163,29 @@ Tax PDA, which owns nothing but the tax tokens. Then it checks the effect:
   cooldown period elapsed. The reference starts at the pool's launch price (net of fees) and then
   follows a 3:1 running average of conversions;
 - destination: the swap pays into the Tax PDA's USDC account, and the program empties it in the
-  same instruction: the launch's keeper fee (a rate frozen at creation) to a USDC account that
+  same instruction: the launch's platform fee (a rate frozen at creation) to a USDC account that
   must belong to the config's treasury, everything else to the vault.
 
-**`deploy`.** Takes no arguments. See "Position strategy" in ECONOMICS.md. Whether exposure is
+**`rebalance` and `deploy`.** Take no arguments. See "Position strategy" in ECONOMICS.md. Whether exposure is
 added depends only on leverage after the deposit: it is added when there is no position or
 leverage is under the launch's minimum (4.75x), and not otherwise. The position's unrealized PnL
 plays no part; it is only reported in the event. The order is immediate-or-cancel at a limit the
 program sets itself, 0.5% from Phoenix's mark; it aims 2% under 5x, and leverage after the fill
-must be at most 5x.
+must be at most 5x. The mark must be fresh (updated within 150 slots) for any order.
 
-**`deleverage`.** Open to anyone, so it does not depend on the keeper. Allowed only above 6x or
-when the account is liquidatable. The size is `position x (L - 5.5) / L`, computed in the
-instruction, which brings leverage down to 5.5x, not all the way to 5x. Nothing is withdrawn.
+The two differ in what they do when there is no work. `deploy` returns an error. `rebalance`
+returns success and skips what it cannot safely do: with nothing idle and leverage in band it
+does nothing; with a stale mark it places no order (a deposit alone still goes in); it does
+nothing for an account Phoenix is about to liquidate unless it can cut it, for a trader account
+that is not registered or not yet enabled, and, apart from a cut, while the protocol is paused.
+That is what lets it ride in a user's transaction.
+
+**The cut (`rebalance` above 6x, or `deleverage`).** Allowed only above 6x or when the account is
+liquidatable. The size is `position x (L - 5.5) / L`, computed in the instruction, which brings
+leverage down to 5.5x, not all the way to 5x. Nothing is withdrawn.
 
 **`redeem`.** See ECONOMICS.md. The reduction and the withdrawal are sized from the redeemer's own
-share and happen in the same instruction as the burn, so nobody, the keeper included, can make
+share and happen in the same instruction as the burn, so nobody can make
 the vault move collateral out of Phoenix without burning the tokens that entitle them to it.
 
 ## The pool, its liquidity and its fees
@@ -163,7 +215,7 @@ None of this is in the terp program. It is done by the frontend with Meteora's S
 
 The claim is an ordinary DLMM instruction. DLMM rejects it from any signer but the operator, and
 rejects any destination but the fee owner's accounts. Once in the vault, the USDC is treated like
-converted tax: it pays claims and redemptions and is deposited by `deploy`. No keeper fee applies.
+converted tax: it pays claims and redemptions and is deposited by the next `rebalance`. No platform fee applies.
 
 The frontend decides "locked" from the decoded position accounts: every position of the pool
 owned by the Launch PDA, its owner, operator, fee owner and lock release point.
@@ -195,12 +247,16 @@ owned by the Launch PDA, its owner, operator, fee owner and lock release point.
 
 ## Transactions
 
-`deploy`, `deleverage`, `fund_claims` and `redeem` each need a raised compute budget (1.4M units)
-and carry about three dozen accounts. Most are the same Phoenix accounts every time, so the
-protocol keeps a shared address lookup table (`scripts/create-lookup-table.ts`). A table holds
-addresses only and confers no authority. Whether the keeper's combined sweep-sell-deploy
-transaction fits the compute limit on mainnet is not yet measured; if it does not, the keeper
-sends the steps as separate transactions, which the program allows.
+`rebalance`, `deploy`, `deleverage`, `fund_claims` and `redeem` each need a raised compute budget
+(up to 1.4M units) and carry about three dozen accounts. Most are the same Phoenix accounts
+every time, so the protocol keeps a shared address lookup table
+(`scripts/create-lookup-table.ts`). A table holds addresses only and confers no authority.
+
+Whether a DLMM swap plus sweep, sale and rebalance fits one transaction's compute limit and
+size on mainnet is **not measured**. Locally, a token transfer plus `rebalance` fits (a test
+runs it); a real swap with all three steps behind it has not been run anywhere. The design does
+not depend on the answer: the app simulates and leaves out what does not fit, and the crank
+falls back to sending the steps as separate transactions, which the program allows.
 
 ## What is mocked, and where
 
