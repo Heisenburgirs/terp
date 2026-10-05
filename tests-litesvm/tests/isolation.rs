@@ -169,7 +169,7 @@ fn no_caller_and_no_admin_has_a_path_to_vault_funds() {
 }
 
 /// Every instruction of the program, sorted.
-const EXPECTED: [&str; 16] = [
+const EXPECTED: [&str; 18] = [
     "add_market",
     "collect_tax",
     "convert_tax",
@@ -178,12 +178,14 @@ const EXPECTED: [&str; 16] = [
     "deploy",
     "fund_claims",
     "init_config",
+    "init_hook",
     "pay_claim",
     "rebalance",
     "redeem",
     "register_trader",
     "set_pool",
     "sweep_residual",
+    "transfer_hook",
     "unwrap_canonical",
     "update_config",
 ];

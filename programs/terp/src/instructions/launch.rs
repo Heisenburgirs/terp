@@ -6,7 +6,8 @@ use anchor_spl::{
         spl_token_2022::{
             extension::{
                 metadata_pointer::MetadataPointer, transfer_fee::TransferFeeConfig,
-                BaseStateWithExtensions, ExtensionType, StateWithExtensions,
+                transfer_hook::TransferHook as TransferHookConfig, BaseStateWithExtensions,
+                ExtensionType, StateWithExtensions,
             },
             state::Mint as MintState,
         },
@@ -126,12 +127,22 @@ fn validate_mint(mint_info: &AccountInfo, launch: &Pubkey, total_supply: u64) ->
             matches!(
                 extension,
                 ExtensionType::TransferFeeConfig
+                    | ExtensionType::TransferHook
                     | ExtensionType::MetadataPointer
                     | ExtensionType::TokenMetadata
             ),
             VaultError::UnsupportedMintExtension
         );
     }
+    // a transfer hook is allowed only if it is this program's, and nobody can ever change it
+    if let Ok(hook) = state.get_extension::<TransferHookConfig>() {
+        require!(
+            Option::<Pubkey>::from(hook.authority).is_none()
+                && Option::<Pubkey>::from(hook.program_id) == Some(crate::ID),
+            VaultError::UnsupportedMintExtension
+        );
+    }
+
     let fee = state
         .get_extension::<TransferFeeConfig>()
         .map_err(|_| error!(VaultError::InvalidTransferFee))?;

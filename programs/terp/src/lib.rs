@@ -73,6 +73,19 @@ pub mod terp {
         instructions::perp::rebalance(ctx)
     }
 
+    pub fn init_hook<'info>(ctx: Context<'info, InitHook<'info>>) -> Result<()> {
+        instructions::hook::init_hook(ctx)
+    }
+
+    /// Called by Token-2022 inside every transfer of a launched token.
+    #[instruction(discriminator = &EXECUTE_DISCRIMINATOR)]
+    pub fn transfer_hook<'info>(
+        ctx: Context<'info, TransferHook<'info>>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::hook::transfer_hook(ctx, amount)
+    }
+
     pub fn fund_claims<'info>(ctx: Context<'info, VenueOp<'info>>) -> Result<()> {
         instructions::perp::fund_claims(ctx)
     }

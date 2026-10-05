@@ -90,6 +90,10 @@ pub enum VaultError {
     NothingToPay,
     #[msg("Supply is not zero or claims are still outstanding")]
     SupplyNotZero,
+    #[msg("The transfer hook can only be called by Token-2022 during a transfer")]
+    NotTransferring,
+    #[msg("Unexpected transfer hook account")]
+    InvalidHookAccount,
 }
 
 impl From<MathError> for Error {

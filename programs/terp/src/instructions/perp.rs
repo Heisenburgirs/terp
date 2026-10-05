@@ -168,6 +168,42 @@ fn check_after_buy(launch: &Launch, after: &PerpView) -> Result<()> {
     Ok(())
 }
 
+/// The transfer hook's share of a deployment: no deposit, only the order that takes leverage
+/// back up to target. Returns `None`, before anything has moved, whenever there is nothing safe
+/// to do.
+pub(crate) fn run_top_up(
+    launch: &Account<Launch>,
+    desk: &Desk,
+    before: PerpView,
+) -> Result<Option<Deployed>> {
+    if before.is_liquidatable() {
+        return Ok(None);
+    }
+    let lots = top_up_lots(launch, &before)?;
+    if lots == 0 || !desk.mark_is_fresh()? {
+        return Ok(None);
+    }
+    let mint_key = launch.mint;
+    let seeds: &[&[u8]] = &[LAUNCH_SEED, mint_key.as_ref(), &[launch.bump]];
+    let fill = desk.order(true, lots, before.mark_price_ticks, seeds)?;
+    let after = desk.view()?;
+    check_after_buy(launch, &after)?;
+    Ok(Some(Deployed {
+        launch: launch.key(),
+        deposited: 0,
+        leverage_bps_before: before.leverage_bps(),
+        unrealized_pnl: before.unrealized_pnl,
+        increased: true,
+        requested_base_lots: lots,
+        filled_base_lots: fill.base_lots,
+        filled_quote_lots: fill.quote_lots,
+        base_lots_after: after.base_lots,
+        notional_after: after.notional,
+        equity_after: after.equity(),
+        leverage_bps_after: after.leverage_bps(),
+    }))
+}
+
 pub(crate) fn record_deploy(launch: &mut Account<Launch>, event: Deployed) -> Result<()> {
     launch.usdc_deposited = launch
         .usdc_deposited
