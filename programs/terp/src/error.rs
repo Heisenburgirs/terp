@@ -90,6 +90,10 @@ pub enum VaultError {
     NothingToPay,
     #[msg("Supply is not zero or claims are still outstanding")]
     SupplyNotZero,
+    #[msg("A tax sale must be: begin, the pool swap from the tax account into the vault's pass-through, settle")]
+    SaleNotWellFormed,
+    #[msg("No tax sale is open, or one already is")]
+    SaleState,
     #[msg("The transfer hook can only be called by Token-2022 during a transfer")]
     NotTransferring,
     #[msg("Unexpected transfer hook account")]

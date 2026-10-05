@@ -61,3 +61,8 @@ pub const MAX_MARK_STALENESS_SLOTS: u64 = 150;
 pub const MAX_PRICE_DROP_BPS_LIMIT: u16 = 2_000;
 pub const MAX_SWAP_DISCRIMINATORS: usize = 4;
 pub const MAX_SWAP_DATA_LEN: usize = 256;
+/// Where the allowlisted swap instruction (Meteora DLMM `swap` / `swap2`) takes the pool, the
+/// account it sells from and the account it pays into.
+pub const SWAP_POOL_INDEX: usize = 0;
+pub const SWAP_TOKEN_IN_INDEX: usize = 4;
+pub const SWAP_TOKEN_OUT_INDEX: usize = 5;

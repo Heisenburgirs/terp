@@ -114,11 +114,23 @@ fn no_caller_and_no_admin_has_a_path_to_vault_funds() {
         // The instructions that put tax to work are open to anyone, so none of them may pay the
         // caller. `convert_tax` pays the platform fee to `treasury_usdc`, which the program
         // requires to belong to the configured treasury (see tax.rs).
-        if ["convert_tax", "deploy", "rebalance", "collect_tax"].contains(&name) {
+        if [
+            "convert_tax",
+            "begin_tax_sale",
+            "settle_tax_sale",
+            "deploy",
+            "rebalance",
+            "collect_tax",
+        ]
+        .contains(&name)
+        {
             for forbidden in ["owner_usdc", "caller_usdc", "keeper_usdc"] {
                 assert!(!accounts.contains(&forbidden), "{name}: {accounts:?}");
             }
-            assert_eq!(accounts.contains(&"treasury_usdc"), name == "convert_tax");
+            assert_eq!(
+                accounts.contains(&"treasury_usdc"),
+                name == "convert_tax" || name == "settle_tax_sale"
+            );
         }
         // the admin signs only the config instructions and market listings, and none of them
         // takes a vault, a token account or a launch
@@ -169,8 +181,9 @@ fn no_caller_and_no_admin_has_a_path_to_vault_funds() {
 }
 
 /// Every instruction of the program, sorted.
-const EXPECTED: [&str; 18] = [
+const EXPECTED: [&str; 20] = [
     "add_market",
+    "begin_tax_sale",
     "collect_tax",
     "convert_tax",
     "create_launch",
@@ -184,6 +197,7 @@ const EXPECTED: [&str; 18] = [
     "redeem",
     "register_trader",
     "set_pool",
+    "settle_tax_sale",
     "sweep_residual",
     "transfer_hook",
     "unwrap_canonical",

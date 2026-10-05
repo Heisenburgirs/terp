@@ -124,6 +124,13 @@ pub struct Launch {
     pub platform_fees_paid: u64,
     /// Slot of the last deployment, or of the transfer hook's last look at the position.
     pub last_rebalance_slot: u64,
+    /// A tax sale opened by `begin_tax_sale` and not yet settled: the batch it was sized from,
+    /// what the caller may sell, and the tax accounts' balances when it opened. All zero
+    /// otherwise; a sale never outlives its transaction.
+    pub sale_batch: u64,
+    pub sale_tokens_in: u64,
+    pub sale_tokens_before: u64,
+    pub sale_usdc_before: u64,
     pub usdc_deposited: u64,
     pub usdc_withdrawn: u64,
     pub tokens_redeemed: u64,

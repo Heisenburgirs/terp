@@ -1081,6 +1081,15 @@ impl Ctx {
     /// MOCK pool: seeds the stand-in AMM with `tokens` from the creator and `usdc`, and records it
     /// as the launch pool.
     pub fn create_pool(&mut self, keys: &LaunchKeys, tokens: u64, usdc: u64) {
+        self.create_pool_inner(keys, tokens, usdc, false)
+    }
+
+    /// `create_pool` for a token with the transfer hook.
+    pub fn create_pool_hooked(&mut self, keys: &LaunchKeys, tokens: u64, usdc: u64) {
+        self.create_pool_inner(keys, tokens, usdc, true)
+    }
+
+    fn create_pool_inner(&mut self, keys: &LaunchKeys, tokens: u64, usdc: u64, hooked: bool) {
         let creator = self.creator;
         ok(self.send(
             CREATOR,
@@ -1111,8 +1120,46 @@ impl Ctx {
                 ),
             ],
         ));
-        ok(self.transfer(CREATOR, &keys.mint, &keys.pool_token_vault, tokens));
+        if hooked {
+            ok(self.transfer_hooked(CREATOR, keys, &keys.pool_token_vault, tokens, false));
+        } else {
+            ok(self.transfer(CREATOR, &keys.mint, &keys.pool_token_vault, tokens));
+        }
         self.mint_usdc(&keys.pool_usdc_vault, usdc);
+    }
+
+    /// A transfer signed by `signer` as the DELEGATE of `source`, not its owner.
+    pub fn transfer_from_ix(
+        &self,
+        signer: &str,
+        mint: &Pubkey,
+        source: &Pubkey,
+        destination: &Pubkey,
+        amount: u64,
+    ) -> Instruction {
+        token_ix::transfer_checked(
+            &TOKEN_2022_PROGRAM,
+            source,
+            mint,
+            destination,
+            &self.px.signer_pubkey(signer),
+            &[],
+            amount,
+            DECIMALS,
+        )
+        .unwrap()
+    }
+
+    pub fn transfer_from(
+        &mut self,
+        signer: &str,
+        mint: &Pubkey,
+        source: &Pubkey,
+        destination: &Pubkey,
+        amount: u64,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let transfer = self.transfer_from_ix(signer, mint, source, destination, amount);
+        self.send(signer, vec![transfer])
     }
 
     /// A valid launch with a pool: half the supply to the pool, half kept by the creator.
@@ -1246,6 +1293,113 @@ impl Ctx {
         );
         convert.accounts.extend(self.swap_accounts(keys));
         convert
+    }
+
+    /// `convert_tax` for a hooked token, with the hook program and its list appended so the
+    /// pool can make the transfer.
+    pub fn convert_tax_hooked(
+        &mut self,
+        keys: &LaunchKeys,
+        tokens: u64,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let data = mock_swap::instruction::Swap {
+            amount_in: tokens,
+            min_out: 0,
+        }
+        .data();
+        let mut convert = self.convert_ix(KEEPER, keys, tokens, data);
+        let extra = self.hook_accounts(keys);
+        let skip = extra.len() - 2;
+        convert.accounts.extend(extra.into_iter().skip(skip));
+        self.send(KEEPER, vec![convert])
+    }
+
+    /// The three instructions of a tax sale carried out by the caller's own transaction:
+    /// `begin_tax_sale`, the MOCK pool swap signed by the caller, `settle_tax_sale`.
+    /// `hooked` appends the token's hook accounts to the swap, as a pool client would.
+    pub fn tax_sale_ixs(
+        &self,
+        caller: &str,
+        keys: &LaunchKeys,
+        tokens: u64,
+        hooked: bool,
+    ) -> [Instruction; 3] {
+        let caller = self.px.signer_pubkey(caller);
+        let begin = ix(
+            terp::ID,
+            terp::accounts::BeginTaxSale {
+                caller,
+                launch: keys.launch,
+                config: config_pda(),
+                tax_authority: keys.tax_authority,
+                tax_account: keys.tax_account,
+                tax_usdc: keys.tax_usdc,
+                mint: keys.mint,
+                token_2022_program: TOKEN_2022_PROGRAM,
+                instructions: INSTRUCTIONS_SYSVAR,
+            },
+            terp::instruction::BeginTaxSale { tokens_in: tokens },
+        );
+        let mut swap = ix(
+            mock_swap::ID,
+            mock_swap::accounts::Swap {
+                pool: keys.pool,
+                user: caller,
+                token_mint: keys.mint,
+                usdc_mint: USDC_MINT,
+                user_token: keys.tax_account,
+                user_usdc: keys.tax_usdc,
+                token_vault: keys.pool_token_vault,
+                usdc_vault: keys.pool_usdc_vault,
+                token_program: TOKEN_PROGRAM,
+                token_2022_program: TOKEN_2022_PROGRAM,
+            },
+            mock_swap::instruction::Swap {
+                amount_in: tokens,
+                min_out: 0,
+            },
+        );
+        if hooked {
+            // before the launch has a Phoenix trader its hook list is empty: only the hook
+            // program and the list itself ride along
+            let extra = self.hook_accounts(keys);
+            let skip = if self.launch(keys).trader_account == Pubkey::default() {
+                extra.len() - 2
+            } else {
+                0
+            };
+            swap.accounts.extend(extra.into_iter().skip(skip));
+        }
+        let settle = ix(
+            terp::ID,
+            terp::accounts::SettleTaxSale {
+                caller,
+                launch: keys.launch,
+                config: config_pda(),
+                tax_authority: keys.tax_authority,
+                tax_account: keys.tax_account,
+                tax_usdc: keys.tax_usdc,
+                vault_usdc: keys.vault_usdc,
+                treasury_usdc: self.usdc_ata(&self.treasury),
+                usdc_mint: USDC_MINT,
+                token_program: TOKEN_PROGRAM,
+                token_2022_program: TOKEN_2022_PROGRAM,
+            },
+            terp::instruction::SettleTaxSale {},
+        );
+        [begin, swap, settle]
+    }
+
+    /// A whole tax sale in one transaction, sent by `caller`.
+    pub fn sell_tax(
+        &mut self,
+        caller: &str,
+        keys: &LaunchKeys,
+        tokens: u64,
+        hooked: bool,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let instructions = self.tax_sale_ixs(caller, keys, tokens, hooked).to_vec();
+        self.send(caller, instructions)
     }
 
     /// `convert_tax` signed by `signer`, with an arbitrary swap instruction.

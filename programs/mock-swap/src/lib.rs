@@ -28,24 +28,41 @@ pub mod mock_swap {
     }
 
     /// Sells `amount_in` tokens for USDC at the constant-product price, no pool fee.
-    pub fn swap(ctx: Context<Swap>, amount_in: u64, min_out: u64) -> Result<()> {
+    pub fn swap<'info>(
+        ctx: Context<'info, Swap<'info>>,
+        amount_in: u64,
+        min_out: u64,
+    ) -> Result<()> {
         let accounts = &ctx.accounts;
         let token_before = accounts.token_vault.amount;
         let usdc_reserve = accounts.usdc_vault.amount;
 
-        token_interface::transfer_checked(
-            CpiContext::new(
-                accounts.token_2022_program.key(),
-                TransferChecked {
-                    from: accounts.user_token.to_account_info(),
-                    mint: accounts.token_mint.to_account_info(),
-                    to: accounts.token_vault.to_account_info(),
-                    authority: accounts.user.to_account_info(),
-                },
-            ),
+        // `remaining_accounts` are a transfer hook's accounts, passed through as a real pool does
+        let mut transfer = anchor_spl::token_2022::spl_token_2022::instruction::transfer_checked(
+            &accounts.token_2022_program.key(),
+            &accounts.user_token.key(),
+            &accounts.token_mint.key(),
+            &accounts.token_vault.key(),
+            accounts.user.key,
+            &[],
             amount_in,
             accounts.token_mint.decimals,
         )?;
+        let mut infos = vec![
+            accounts.user_token.to_account_info(),
+            accounts.token_mint.to_account_info(),
+            accounts.token_vault.to_account_info(),
+            accounts.user.to_account_info(),
+        ];
+        for extra in ctx.remaining_accounts {
+            transfer.accounts.push(AccountMeta {
+                pubkey: extra.key(),
+                is_signer: false,
+                is_writable: extra.is_writable,
+            });
+            infos.push(extra.clone());
+        }
+        anchor_lang::solana_program::program::invoke(&transfer, &infos)?;
         ctx.accounts.token_vault.reload()?;
         let received = ctx.accounts.token_vault.amount - token_before;
 

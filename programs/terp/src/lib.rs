@@ -9,6 +9,7 @@ pub mod constants;
 pub mod error;
 pub mod events;
 pub mod instructions;
+pub mod introspect;
 pub mod math;
 pub mod phoenix;
 pub mod state;
@@ -59,6 +60,14 @@ pub mod terp {
         swap_data: Vec<u8>,
     ) -> Result<()> {
         instructions::tax::convert_tax(ctx, tokens_in, swap_data)
+    }
+
+    pub fn begin_tax_sale(ctx: Context<BeginTaxSale>, tokens_in: u64) -> Result<()> {
+        instructions::tax::begin_tax_sale(ctx, tokens_in)
+    }
+
+    pub fn settle_tax_sale(ctx: Context<SettleTaxSale>) -> Result<()> {
+        instructions::tax::settle_tax_sale(ctx)
     }
 
     pub fn deploy<'info>(ctx: Context<'info, Deploy<'info>>) -> Result<()> {

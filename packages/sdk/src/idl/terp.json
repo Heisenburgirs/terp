@@ -92,6 +92,119 @@
       ]
     },
     {
+      "name": "begin_tax_sale",
+      "discriminator": [
+        106,
+        23,
+        75,
+        18,
+        179,
+        20,
+        108,
+        53
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "tax_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "tax_account",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "tax_usdc",
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "token_2022_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "instructions",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "tokens_in",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "collect_tax",
       "discriminator": [
         12,
@@ -1827,6 +1940,127 @@
       "args": []
     },
     {
+      "name": "settle_tax_sale",
+      "discriminator": [
+        206,
+        171,
+        116,
+        243,
+        9,
+        66,
+        139,
+        171
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "tax_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "tax_account",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "tax_usdc",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "vault_usdc",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "treasury_usdc",
+          "docs": [
+            "The platform treasury's USDC account, for the platform fee."
+          ],
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "token_2022_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "sweep_residual",
       "discriminator": [
         230,
@@ -2536,11 +2770,21 @@
     },
     {
       "code": 6041,
+      "name": "SaleNotWellFormed",
+      "msg": "A tax sale must be: begin, the pool swap from the tax account into the vault's pass-through, settle"
+    },
+    {
+      "code": 6042,
+      "name": "SaleState",
+      "msg": "No tax sale is open, or one already is"
+    },
+    {
+      "code": 6043,
       "name": "NotTransferring",
       "msg": "The transfer hook can only be called by Token-2022 during a transfer"
     },
     {
-      "code": 6042,
+      "code": 6044,
       "name": "InvalidHookAccount",
       "msg": "Unexpected transfer hook account"
     }
@@ -3110,6 +3354,27 @@
             "docs": [
               "Slot of the last deployment, or of the transfer hook's last look at the position."
             ],
+            "type": "u64"
+          },
+          {
+            "name": "sale_batch",
+            "docs": [
+              "A tax sale opened by `begin_tax_sale` and not yet settled: the batch it was sized from,",
+              "what the caller may sell, and the tax accounts' balances when it opened. All zero",
+              "otherwise; a sale never outlives its transaction."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "sale_tokens_in",
+            "type": "u64"
+          },
+          {
+            "name": "sale_tokens_before",
+            "type": "u64"
+          },
+          {
+            "name": "sale_usdc_before",
             "type": "u64"
           },
           {
