@@ -1,0 +1,3166 @@
+{
+  "address": "8mGW6pAB1H2mpyx8muVQTAEVf9dLLGxu5H3h4Ch2GtAh",
+  "metadata": {
+    "name": "terp",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Token-2022 transfer-tax launchpad whose tax funds Phoenix perp positions, with burn-to-redeem"
+  },
+  "instructions": [
+    {
+      "name": "add_market",
+      "discriminator": [
+        41,
+        137,
+        185,
+        126,
+        69,
+        139,
+        254,
+        55
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.asset_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "orderbook"
+        },
+        {
+          "name": "spline"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "AddMarketArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "collect_tax",
+      "discriminator": [
+        12,
+        125,
+        129,
+        207,
+        240,
+        186,
+        255,
+        253
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "tax_account",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "token_2022_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "convert_tax",
+      "discriminator": [
+        152,
+        217,
+        96,
+        4,
+        171,
+        233,
+        185,
+        255
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "tax_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "tax_account",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "tax_usdc",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "vault_usdc",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "treasury_usdc",
+          "docs": [
+            "The platform treasury's USDC account, for the keeper fee."
+          ],
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "swap_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "tokens_in",
+          "type": "u64"
+        },
+        {
+          "name": "swap_data",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "create_launch",
+      "discriminator": [
+        239,
+        223,
+        255,
+        134,
+        39,
+        121,
+        127,
+        62
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "The Phoenix perp market this launch's tax will be levered into."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.asset_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "tax_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "tax_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "tax_authority"
+              },
+              {
+                "kind": "account",
+                "path": "token_2022_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        },
+        {
+          "name": "vault_usdc",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "launch"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "tax_usdc",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "tax_authority"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "token_2022_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "CreateLaunchArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "deleverage",
+      "discriminator": [
+        158,
+        127,
+        27,
+        222,
+        183,
+        178,
+        35,
+        194
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "phoenix",
+          "accounts": [
+            {
+              "name": "phoenix_program",
+              "address": "EtrnLzgbS7nMMy5fbD42kXiUzGg8XQzJ972Xtk1cjWih"
+            },
+            {
+              "name": "log_authority",
+              "address": "GdxfTLSsdSY37G6fZoYtdGDSfgFnbT2EmRpuePZxWShS"
+            },
+            {
+              "name": "global_config",
+              "writable": true,
+              "address": "2zskx2iyCvb6Stg7RBZkt1f6MrF4dpYtMG3yMvKwqtUZ"
+            },
+            {
+              "name": "trader_account",
+              "writable": true
+            },
+            {
+              "name": "perp_asset_map",
+              "writable": true
+            },
+            {
+              "name": "orderbook",
+              "writable": true
+            },
+            {
+              "name": "spline",
+              "writable": true
+            },
+            {
+              "name": "global_vault",
+              "writable": true
+            },
+            {
+              "name": "withdraw_queue",
+              "writable": true
+            },
+            {
+              "name": "hawkeye_program",
+              "address": "RiSeVw3ZjNfsaXPRb4mgaqYaEEt41pNNJoDvVh7pgQj"
+            }
+          ]
+        },
+        {
+          "name": "ember",
+          "accounts": [
+            {
+              "name": "ember_program",
+              "address": "EMBERpYNE6ehWmXymZZS2skiFmCa9V5dp14e1iduM5qy"
+            },
+            {
+              "name": "ember_state",
+              "address": "6ur7v6AXNpnHeEb6xuk7PyezvZ1i5GrgYyWZkNCpzbRz"
+            },
+            {
+              "name": "ember_vault",
+              "writable": true,
+              "address": "FKcEb4TdPDTRuMnQDpSEPQBcrm15S73xiUD6Qf8ZLUkq"
+            },
+            {
+              "name": "usdc_mint",
+              "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+            },
+            {
+              "name": "canonical_mint",
+              "writable": true
+            },
+            {
+              "name": "vault_usdc",
+              "writable": true
+            },
+            {
+              "name": "canonical_account",
+              "writable": true
+            },
+            {
+              "name": "token_program",
+              "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            }
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "deploy",
+      "discriminator": [
+        67,
+        36,
+        143,
+        118,
+        36,
+        164,
+        92,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "phoenix",
+          "accounts": [
+            {
+              "name": "phoenix_program",
+              "address": "EtrnLzgbS7nMMy5fbD42kXiUzGg8XQzJ972Xtk1cjWih"
+            },
+            {
+              "name": "log_authority",
+              "address": "GdxfTLSsdSY37G6fZoYtdGDSfgFnbT2EmRpuePZxWShS"
+            },
+            {
+              "name": "global_config",
+              "writable": true,
+              "address": "2zskx2iyCvb6Stg7RBZkt1f6MrF4dpYtMG3yMvKwqtUZ"
+            },
+            {
+              "name": "trader_account",
+              "writable": true
+            },
+            {
+              "name": "perp_asset_map",
+              "writable": true
+            },
+            {
+              "name": "orderbook",
+              "writable": true
+            },
+            {
+              "name": "spline",
+              "writable": true
+            },
+            {
+              "name": "global_vault",
+              "writable": true
+            },
+            {
+              "name": "withdraw_queue",
+              "writable": true
+            },
+            {
+              "name": "hawkeye_program",
+              "address": "RiSeVw3ZjNfsaXPRb4mgaqYaEEt41pNNJoDvVh7pgQj"
+            }
+          ]
+        },
+        {
+          "name": "ember",
+          "accounts": [
+            {
+              "name": "ember_program",
+              "address": "EMBERpYNE6ehWmXymZZS2skiFmCa9V5dp14e1iduM5qy"
+            },
+            {
+              "name": "ember_state",
+              "address": "6ur7v6AXNpnHeEb6xuk7PyezvZ1i5GrgYyWZkNCpzbRz"
+            },
+            {
+              "name": "ember_vault",
+              "writable": true,
+              "address": "FKcEb4TdPDTRuMnQDpSEPQBcrm15S73xiUD6Qf8ZLUkq"
+            },
+            {
+              "name": "usdc_mint",
+              "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+            },
+            {
+              "name": "canonical_mint",
+              "writable": true
+            },
+            {
+              "name": "vault_usdc",
+              "writable": true
+            },
+            {
+              "name": "canonical_account",
+              "writable": true
+            },
+            {
+              "name": "token_program",
+              "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            }
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "fund_claims",
+      "discriminator": [
+        209,
+        36,
+        54,
+        54,
+        90,
+        168,
+        126,
+        172
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "phoenix",
+          "accounts": [
+            {
+              "name": "phoenix_program",
+              "address": "EtrnLzgbS7nMMy5fbD42kXiUzGg8XQzJ972Xtk1cjWih"
+            },
+            {
+              "name": "log_authority",
+              "address": "GdxfTLSsdSY37G6fZoYtdGDSfgFnbT2EmRpuePZxWShS"
+            },
+            {
+              "name": "global_config",
+              "writable": true,
+              "address": "2zskx2iyCvb6Stg7RBZkt1f6MrF4dpYtMG3yMvKwqtUZ"
+            },
+            {
+              "name": "trader_account",
+              "writable": true
+            },
+            {
+              "name": "perp_asset_map",
+              "writable": true
+            },
+            {
+              "name": "orderbook",
+              "writable": true
+            },
+            {
+              "name": "spline",
+              "writable": true
+            },
+            {
+              "name": "global_vault",
+              "writable": true
+            },
+            {
+              "name": "withdraw_queue",
+              "writable": true
+            },
+            {
+              "name": "hawkeye_program",
+              "address": "RiSeVw3ZjNfsaXPRb4mgaqYaEEt41pNNJoDvVh7pgQj"
+            }
+          ]
+        },
+        {
+          "name": "ember",
+          "accounts": [
+            {
+              "name": "ember_program",
+              "address": "EMBERpYNE6ehWmXymZZS2skiFmCa9V5dp14e1iduM5qy"
+            },
+            {
+              "name": "ember_state",
+              "address": "6ur7v6AXNpnHeEb6xuk7PyezvZ1i5GrgYyWZkNCpzbRz"
+            },
+            {
+              "name": "ember_vault",
+              "writable": true,
+              "address": "FKcEb4TdPDTRuMnQDpSEPQBcrm15S73xiUD6Qf8ZLUkq"
+            },
+            {
+              "name": "usdc_mint",
+              "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+            },
+            {
+              "name": "canonical_mint",
+              "writable": true
+            },
+            {
+              "name": "vault_usdc",
+              "writable": true
+            },
+            {
+              "name": "canonical_account",
+              "writable": true
+            },
+            {
+              "name": "token_program",
+              "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            }
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_config",
+      "discriminator": [
+        23,
+        235,
+        115,
+        232,
+        168,
+        96,
+        1,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitConfigArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "pay_claim",
+      "discriminator": [
+        73,
+        127,
+        176,
+        110,
+        67,
+        8,
+        221,
+        170
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          },
+          "relations": [
+            "claim"
+          ]
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "relations": [
+            "claim"
+          ]
+        },
+        {
+          "name": "claim",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  97,
+                  105,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_usdc",
+          "writable": true
+        },
+        {
+          "name": "vault_usdc",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "redeem",
+      "discriminator": [
+        184,
+        12,
+        86,
+        149,
+        70,
+        196,
+        97,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "token_account",
+          "writable": true
+        },
+        {
+          "name": "owner_usdc",
+          "writable": true
+        },
+        {
+          "name": "claim",
+          "docs": [
+            "Holds what is still owed if Phoenix queues the withdrawal; closed again otherwise."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  97,
+                  105,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "phoenix",
+          "accounts": [
+            {
+              "name": "phoenix_program",
+              "address": "EtrnLzgbS7nMMy5fbD42kXiUzGg8XQzJ972Xtk1cjWih"
+            },
+            {
+              "name": "log_authority",
+              "address": "GdxfTLSsdSY37G6fZoYtdGDSfgFnbT2EmRpuePZxWShS"
+            },
+            {
+              "name": "global_config",
+              "writable": true,
+              "address": "2zskx2iyCvb6Stg7RBZkt1f6MrF4dpYtMG3yMvKwqtUZ"
+            },
+            {
+              "name": "trader_account",
+              "writable": true
+            },
+            {
+              "name": "perp_asset_map",
+              "writable": true
+            },
+            {
+              "name": "orderbook",
+              "writable": true
+            },
+            {
+              "name": "spline",
+              "writable": true
+            },
+            {
+              "name": "global_vault",
+              "writable": true
+            },
+            {
+              "name": "withdraw_queue",
+              "writable": true
+            },
+            {
+              "name": "hawkeye_program",
+              "address": "RiSeVw3ZjNfsaXPRb4mgaqYaEEt41pNNJoDvVh7pgQj"
+            }
+          ]
+        },
+        {
+          "name": "ember",
+          "accounts": [
+            {
+              "name": "ember_program",
+              "address": "EMBERpYNE6ehWmXymZZS2skiFmCa9V5dp14e1iduM5qy"
+            },
+            {
+              "name": "ember_state",
+              "address": "6ur7v6AXNpnHeEb6xuk7PyezvZ1i5GrgYyWZkNCpzbRz"
+            },
+            {
+              "name": "ember_vault",
+              "writable": true,
+              "address": "FKcEb4TdPDTRuMnQDpSEPQBcrm15S73xiUD6Qf8ZLUkq"
+            },
+            {
+              "name": "usdc_mint",
+              "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+            },
+            {
+              "name": "canonical_mint",
+              "writable": true
+            },
+            {
+              "name": "vault_usdc",
+              "writable": true
+            },
+            {
+              "name": "canonical_account",
+              "writable": true
+            },
+            {
+              "name": "token_program",
+              "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            }
+          ]
+        },
+        {
+          "name": "token_2022_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "min_payout",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "register_trader",
+      "discriminator": [
+        75,
+        243,
+        224,
+        167,
+        1,
+        5,
+        51,
+        32
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "phoenix_program",
+          "address": "EtrnLzgbS7nMMy5fbD42kXiUzGg8XQzJ972Xtk1cjWih"
+        },
+        {
+          "name": "log_authority",
+          "address": "GdxfTLSsdSY37G6fZoYtdGDSfgFnbT2EmRpuePZxWShS"
+        },
+        {
+          "name": "global_config",
+          "address": "2zskx2iyCvb6Stg7RBZkt1f6MrF4dpYtMG3yMvKwqtUZ"
+        },
+        {
+          "name": "trader_account",
+          "writable": true
+        },
+        {
+          "name": "canonical_mint"
+        },
+        {
+          "name": "canonical_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "launch"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "canonical_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "set_pool",
+      "discriminator": [
+        119,
+        30,
+        14,
+        180,
+        115,
+        225,
+        167,
+        238
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "signer": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "sweep_residual",
+      "discriminator": [
+        230,
+        118,
+        35,
+        155,
+        165,
+        110,
+        141,
+        19
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "launch",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "vault_usdc",
+          "writable": true,
+          "relations": [
+            "launch"
+          ]
+        },
+        {
+          "name": "treasury_usdc",
+          "writable": true
+        },
+        {
+          "name": "usdc_mint",
+          "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "unwrap_canonical",
+      "discriminator": [
+        19,
+        173,
+        83,
+        196,
+        141,
+        88,
+        70,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "launch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ember",
+          "accounts": [
+            {
+              "name": "ember_program",
+              "address": "EMBERpYNE6ehWmXymZZS2skiFmCa9V5dp14e1iduM5qy"
+            },
+            {
+              "name": "ember_state",
+              "address": "6ur7v6AXNpnHeEb6xuk7PyezvZ1i5GrgYyWZkNCpzbRz"
+            },
+            {
+              "name": "ember_vault",
+              "writable": true,
+              "address": "FKcEb4TdPDTRuMnQDpSEPQBcrm15S73xiUD6Qf8ZLUkq"
+            },
+            {
+              "name": "usdc_mint",
+              "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+            },
+            {
+              "name": "canonical_mint",
+              "writable": true
+            },
+            {
+              "name": "vault_usdc",
+              "writable": true
+            },
+            {
+              "name": "canonical_account",
+              "writable": true
+            },
+            {
+              "name": "token_program",
+              "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            }
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_config",
+      "discriminator": [
+        29,
+        158,
+        252,
+        191,
+        10,
+        83,
+        219,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "UpdateConfigArgs"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Claim",
+      "discriminator": [
+        155,
+        70,
+        22,
+        176,
+        123,
+        215,
+        246,
+        102
+      ]
+    },
+    {
+      "name": "Launch",
+      "discriminator": [
+        144,
+        51,
+        51,
+        163,
+        206,
+        85,
+        213,
+        38
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "ProtocolConfig",
+      "discriminator": [
+        207,
+        91,
+        250,
+        28,
+        152,
+        179,
+        215,
+        209
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CanonicalUnwrapped",
+      "discriminator": [
+        219,
+        31,
+        156,
+        239,
+        68,
+        242,
+        170,
+        26
+      ]
+    },
+    {
+      "name": "ClaimPaid",
+      "discriminator": [
+        212,
+        155,
+        88,
+        118,
+        128,
+        99,
+        132,
+        42
+      ]
+    },
+    {
+      "name": "ClaimsFunded",
+      "discriminator": [
+        252,
+        37,
+        42,
+        101,
+        56,
+        93,
+        167,
+        243
+      ]
+    },
+    {
+      "name": "Deleveraged",
+      "discriminator": [
+        34,
+        71,
+        31,
+        45,
+        212,
+        184,
+        131,
+        185
+      ]
+    },
+    {
+      "name": "Deployed",
+      "discriminator": [
+        50,
+        145,
+        94,
+        59,
+        169,
+        255,
+        159,
+        186
+      ]
+    },
+    {
+      "name": "LaunchCreated",
+      "discriminator": [
+        59,
+        38,
+        190,
+        230,
+        33,
+        34,
+        89,
+        20
+      ]
+    },
+    {
+      "name": "PoolSet",
+      "discriminator": [
+        135,
+        203,
+        185,
+        106,
+        113,
+        87,
+        177,
+        32
+      ]
+    },
+    {
+      "name": "Redeemed",
+      "discriminator": [
+        14,
+        29,
+        183,
+        71,
+        31,
+        165,
+        107,
+        38
+      ]
+    },
+    {
+      "name": "ResidualSwept",
+      "discriminator": [
+        72,
+        205,
+        219,
+        77,
+        249,
+        124,
+        150,
+        130
+      ]
+    },
+    {
+      "name": "TaxCollected",
+      "discriminator": [
+        101,
+        55,
+        1,
+        91,
+        200,
+        239,
+        83,
+        30
+      ]
+    },
+    {
+      "name": "TaxConverted",
+      "discriminator": [
+        246,
+        238,
+        239,
+        63,
+        68,
+        201,
+        254,
+        192
+      ]
+    },
+    {
+      "name": "TraderRegistered",
+      "discriminator": [
+        8,
+        197,
+        38,
+        177,
+        214,
+        57,
+        9,
+        194
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MathOverflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6001,
+      "name": "Unauthorized",
+      "msg": "Signer is not authorized for this action"
+    },
+    {
+      "code": 6002,
+      "name": "Paused",
+      "msg": "Risk-increasing actions are paused"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidParameter",
+      "msg": "Invalid parameter"
+    },
+    {
+      "code": 6004,
+      "name": "MintNotToken2022",
+      "msg": "Mint must be a Token-2022 mint"
+    },
+    {
+      "code": 6005,
+      "name": "MintAuthorityPresent",
+      "msg": "Mint authority must be revoked"
+    },
+    {
+      "code": 6006,
+      "name": "FreezeAuthorityPresent",
+      "msg": "Freeze authority must be absent"
+    },
+    {
+      "code": 6007,
+      "name": "SupplyMismatch",
+      "msg": "Mint supply does not match the declared fixed supply"
+    },
+    {
+      "code": 6008,
+      "name": "UnsupportedMintExtension",
+      "msg": "Mint carries an extension this launchpad does not allow"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidTransferFee",
+      "msg": "Transfer fee must be exactly 1% or 3% with no cap and no pending change"
+    },
+    {
+      "code": 6010,
+      "name": "TransferFeeAuthorityPresent",
+      "msg": "Transfer fee config authority must be revoked"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidWithheldAuthority",
+      "msg": "Withdraw-withheld authority must be the launch vault"
+    },
+    {
+      "code": 6012,
+      "name": "MutableMetadata",
+      "msg": "Token metadata must be immutable and stored on the mint"
+    },
+    {
+      "code": 6013,
+      "name": "AllocationMismatch",
+      "msg": "Declared allocations must add up to the supply"
+    },
+    {
+      "code": 6014,
+      "name": "PoolAlreadySet",
+      "msg": "Pool is already set"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidPool",
+      "msg": "Pool is not owned by the configured swap program"
+    },
+    {
+      "code": 6016,
+      "name": "NothingCollected",
+      "msg": "Nothing to collect"
+    },
+    {
+      "code": 6017,
+      "name": "SwapNotAllowed",
+      "msg": "Swap program or instruction is not allowlisted"
+    },
+    {
+      "code": 6018,
+      "name": "SwapPoolMissing",
+      "msg": "Swap accounts do not include the launch pool"
+    },
+    {
+      "code": 6019,
+      "name": "ConversionTooSmall",
+      "msg": "Not enough tax collected for a batch yet"
+    },
+    {
+      "code": 6020,
+      "name": "ConversionWrongSize",
+      "msg": "Conversion must sell the batch the program computed, no more and not much less"
+    },
+    {
+      "code": 6021,
+      "name": "ConversionCooldown",
+      "msg": "Conversion cooldown has not elapsed"
+    },
+    {
+      "code": 6022,
+      "name": "SlippageExceeded",
+      "msg": "Conversion returned no USDC"
+    },
+    {
+      "code": 6023,
+      "name": "ConversionPriceTooLow",
+      "msg": "Conversion price is too far below the reference price"
+    },
+    {
+      "code": 6024,
+      "name": "TraderNotRegistered",
+      "msg": "Phoenix trader account is not registered for this launch"
+    },
+    {
+      "code": 6025,
+      "name": "TraderAlreadyRegistered",
+      "msg": "Phoenix trader account is already registered"
+    },
+    {
+      "code": 6026,
+      "name": "InvalidPhoenixAccount",
+      "msg": "Unexpected Phoenix account"
+    },
+    {
+      "code": 6027,
+      "name": "InvalidPhoenixTail",
+      "msg": "Phoenix remaining accounts do not match the exchange trader index"
+    },
+    {
+      "code": 6028,
+      "name": "InvalidPhoenixReturnData",
+      "msg": "Phoenix return data is missing or malformed"
+    },
+    {
+      "code": 6029,
+      "name": "StaleMarkPrice",
+      "msg": "Mark price is stale"
+    },
+    {
+      "code": 6030,
+      "name": "NothingToDeploy",
+      "msg": "Nothing to deploy: no idle USDC above the minimum and no exposure left to open"
+    },
+    {
+      "code": 6031,
+      "name": "LeverageTooHigh",
+      "msg": "Leverage would exceed the policy limit"
+    },
+    {
+      "code": 6032,
+      "name": "NotDeleveragable",
+      "msg": "Account is not above the deleverage threshold"
+    },
+    {
+      "code": 6033,
+      "name": "WrongPositionSide",
+      "msg": "Position is on the wrong side for this launch"
+    },
+    {
+      "code": 6034,
+      "name": "AccountAtRisk",
+      "msg": "Account is liquidatable; exposure cannot be increased"
+    },
+    {
+      "code": 6035,
+      "name": "WithdrawalAlreadyQueued",
+      "msg": "A Phoenix withdrawal is already queued for this launch"
+    },
+    {
+      "code": 6036,
+      "name": "RedemptionTooSmall",
+      "msg": "Redemption amount is below the minimum or above the balance"
+    },
+    {
+      "code": 6037,
+      "name": "PayoutBelowMinimum",
+      "msg": "Payout is below the requested minimum"
+    },
+    {
+      "code": 6038,
+      "name": "ReductionIncomplete",
+      "msg": "The position could not be reduced enough at the allowed price; try a smaller amount or retry"
+    },
+    {
+      "code": 6039,
+      "name": "NothingToPay",
+      "msg": "No claim is waiting, or the vault holds no USDC to pay it yet"
+    },
+    {
+      "code": 6040,
+      "name": "SupplyNotZero",
+      "msg": "Supply is not zero or claims are still outstanding"
+    }
+  ],
+  "types": [
+    {
+      "name": "AddMarketArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset_id",
+            "type": "u32"
+          },
+          {
+            "name": "tick_size",
+            "type": "u64"
+          },
+          {
+            "name": "base_lot_decimals",
+            "type": "u8"
+          },
+          {
+            "name": "symbol",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CanonicalUnwrapped",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Claim",
+      "docs": [
+        "USDC owed to a redeemer whose tokens are already burned. Created only when Phoenix queued the",
+        "withdrawal that would have paid them; the amount is fixed and paid as soon as USDC arrives."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ClaimPaid",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc",
+            "type": "u64"
+          },
+          {
+            "name": "remaining",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ClaimsFunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "requested",
+            "type": "u64"
+          },
+          {
+            "name": "arrived",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CreateLaunchArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "total_supply",
+            "docs": [
+              "Must equal the mint's supply; nothing can be minted afterwards."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "creator_allocation",
+            "docs": [
+              "Disclosed split of the supply. Informational, checked to add up; actual balances are",
+              "public on-chain."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pool_allocation",
+            "type": "u64"
+          },
+          {
+            "name": "initial_price",
+            "docs": [
+              "The pool's starting price, USDC atoms per token atom scaled by 1e12. It seeds the",
+              "reference price that tax conversions are checked against."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "min_convert_tokens",
+            "docs": [
+              "Tax batches below this are not converted."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_convert_tokens",
+            "docs": [
+              "Largest tax batch sold in one conversion."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "convert_cooldown_slots",
+            "type": "u64"
+          },
+          {
+            "name": "max_price_drop_bps",
+            "docs": [
+              "How far below the reference price one conversion may execute, per cooldown elapsed."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "min_deposit_usdc",
+            "docs": [
+              "USDC batches below this are not deposited as collateral."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "min_redeem_tokens",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Deleveraged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "caller",
+            "type": "pubkey"
+          },
+          {
+            "name": "requested_base_lots",
+            "type": "u64"
+          },
+          {
+            "name": "filled_base_lots",
+            "type": "u64"
+          },
+          {
+            "name": "filled_quote_lots",
+            "type": "u64"
+          },
+          {
+            "name": "leverage_bps_before",
+            "type": "u64"
+          },
+          {
+            "name": "leverage_bps_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Deployed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "deposited",
+            "docs": [
+              "USDC deposited as Phoenix collateral."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "leverage_bps_before",
+            "docs": [
+              "Leverage once the deposit was in, before any order."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "unrealized_pnl",
+            "docs": [
+              "The position's unrealized PnL when the call ran."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "increased",
+            "docs": [
+              "True when exposure was added: there was no position, or leverage was under the minimum."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "requested_base_lots",
+            "type": "u64"
+          },
+          {
+            "name": "filled_base_lots",
+            "type": "u64"
+          },
+          {
+            "name": "filled_quote_lots",
+            "type": "u64"
+          },
+          {
+            "name": "base_lots_after",
+            "type": "i64"
+          },
+          {
+            "name": "notional_after",
+            "type": "u64"
+          },
+          {
+            "name": "equity_after",
+            "type": "i64"
+          },
+          {
+            "name": "leverage_bps_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Direction",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Long"
+          },
+          {
+            "name": "Short"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitConfigArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "keeper",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "keeper_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "swap_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "swap_discriminators",
+            "type": {
+              "vec": {
+                "array": [
+                  "u8",
+                  8
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Launch",
+      "docs": [
+        "One launch: the tax vault of one token. It is the mint's only withdraw-withheld authority,",
+        "the owner of every vault asset, and the authority of the launch's own Phoenix trader account,",
+        "which is what isolates launches from each other."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool",
+            "docs": [
+              "Liquidity pool the tax is sold into. Set once by the creator."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_usdc",
+            "type": "pubkey"
+          },
+          {
+            "name": "tax_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "tax_usdc",
+            "docs": [
+              "USDC account of the tax authority: swaps pay out here and the program forwards on."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "trader_account",
+            "docs": [
+              "Zero until `register_trader`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "canonical_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "orderbook",
+            "type": "pubkey"
+          },
+          {
+            "name": "spline",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset_id",
+            "type": "u32"
+          },
+          {
+            "name": "tick_size",
+            "type": "u64"
+          },
+          {
+            "name": "base_lot_decimals",
+            "type": "u8"
+          },
+          {
+            "name": "symbol",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "direction",
+            "type": {
+              "defined": {
+                "name": "Direction"
+              }
+            }
+          },
+          {
+            "name": "decimals",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "tax_bump",
+            "type": "u8"
+          },
+          {
+            "name": "transfer_fee_bps",
+            "docs": [
+              "The mint's transfer tax, 1% or 3%, as verified on the mint at creation."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "target_leverage_bps",
+            "type": "u32"
+          },
+          {
+            "name": "min_leverage_bps",
+            "docs": [
+              "Under this a deployment buys exposure back up to target."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "max_leverage_bps",
+            "type": "u32"
+          },
+          {
+            "name": "deleverage_to_bps",
+            "docs": [
+              "What a deleverage above the maximum reduces leverage to."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "keeper_fee_bps",
+            "docs": [
+              "Share of converted tax the platform takes for running the keeper."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "redemption_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "exit_cost_bps",
+            "type": "u16"
+          },
+          {
+            "name": "order_slippage_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_price_drop_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_mark_staleness_slots",
+            "type": "u64"
+          },
+          {
+            "name": "min_convert_tokens",
+            "type": "u64"
+          },
+          {
+            "name": "max_convert_tokens",
+            "type": "u64"
+          },
+          {
+            "name": "convert_cooldown_slots",
+            "type": "u64"
+          },
+          {
+            "name": "min_deposit_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "min_redeem_tokens",
+            "type": "u64"
+          },
+          {
+            "name": "initial_supply",
+            "type": "u64"
+          },
+          {
+            "name": "creator_allocation",
+            "type": "u64"
+          },
+          {
+            "name": "pool_allocation",
+            "type": "u64"
+          },
+          {
+            "name": "ema_price",
+            "type": "u128"
+          },
+          {
+            "name": "last_convert_slot",
+            "type": "u64"
+          },
+          {
+            "name": "pending_claims",
+            "docs": [
+              "USDC owed to redeemers whose Phoenix withdrawal was queued. Senior to equity."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "tokens_collected",
+            "type": "u64"
+          },
+          {
+            "name": "tokens_converted",
+            "type": "u64"
+          },
+          {
+            "name": "usdc_converted",
+            "docs": [
+              "What reached the vault: pool proceeds less the keeper fee."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "keeper_fees_paid",
+            "type": "u64"
+          },
+          {
+            "name": "usdc_deposited",
+            "type": "u64"
+          },
+          {
+            "name": "usdc_withdrawn",
+            "type": "u64"
+          },
+          {
+            "name": "tokens_redeemed",
+            "type": "u64"
+          },
+          {
+            "name": "usdc_redeemed",
+            "type": "u64"
+          },
+          {
+            "name": "redemption_fees_retained",
+            "type": "u64"
+          },
+          {
+            "name": "exit_costs_retained",
+            "type": "u64"
+          },
+          {
+            "name": "created_slot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LaunchCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "initial_supply",
+            "type": "u64"
+          },
+          {
+            "name": "creator_allocation",
+            "type": "u64"
+          },
+          {
+            "name": "pool_allocation",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "docs": [
+        "A Phoenix perp market a launch can pick as its leveraged asset. Listed by the admin, never",
+        "edited afterwards: a launch copies these values at creation and keeps them for good."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset_id",
+            "type": "u32"
+          },
+          {
+            "name": "orderbook",
+            "type": "pubkey"
+          },
+          {
+            "name": "spline",
+            "type": "pubkey"
+          },
+          {
+            "name": "tick_size",
+            "docs": [
+              "Quote lots (USDC atoms) per base lot, per price tick."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "base_lot_decimals",
+            "docs": [
+              "One base lot is `10^-base_lot_decimals` of the asset. Display only."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "symbol",
+            "docs": [
+              "ASCII ticker, zero-padded. Display only."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolConfig",
+      "docs": [
+        "Protocol-wide settings. The admin can rotate itself, the keeper and the treasury, list perp",
+        "markets launches may choose from, and pause risk-increasing actions. Neither the admin nor",
+        "the keeper has a path to any launch's tokens, USDC, collateral or position."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "keeper",
+            "docs": [
+              "The launchpad operator's key: the only one that may convert tax and deploy it. It decides",
+              "when; the program decides how much, at what price, and where the money goes."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "The platform's wallet: receives the keeper fee, and residual USDC of a launch whose supply",
+              "reached zero."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "keeper_fee_bps",
+            "docs": [
+              "Share of converted tax paid to the treasury, applied to launches created from now on.",
+              "A launch keeps the rate it was created with."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "swap_program",
+            "docs": [
+              "AMM the tax is sold through (Meteora DLMM on mainnet). Immutable."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "swap_discriminators",
+            "docs": [
+              "Instruction discriminators of `swap_program` a conversion may call. Immutable."
+            ],
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    8
+                  ]
+                },
+                4
+              ]
+            }
+          },
+          {
+            "name": "swap_discriminator_count",
+            "type": "u8"
+          },
+          {
+            "name": "paused",
+            "docs": [
+              "Blocks launch creation, tax conversion and deployment. Never blocks deleveraging,",
+              "redemptions or claim payouts."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Redeemed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "tokens_burned",
+            "docs": [
+              "`q`"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "supply_before",
+            "docs": [
+              "`S` before the burn"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "equity",
+            "docs": [
+              "`E` at redemption, net of claims"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "notional",
+            "type": "u64"
+          },
+          {
+            "name": "gross",
+            "type": "u64"
+          },
+          {
+            "name": "redemption_fee",
+            "type": "u64"
+          },
+          {
+            "name": "exit_cost",
+            "type": "u64"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "paid",
+            "docs": [
+              "Paid in this transaction."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "owed",
+            "docs": [
+              "Recorded as a claim because Phoenix queued the withdrawal."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "base_lots_closed",
+            "type": "u64"
+          },
+          {
+            "name": "usdc_withdrawn",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ResidualSwept",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TaxCollected",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "tokens",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TaxConverted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "tokens_in",
+            "type": "u64"
+          },
+          {
+            "name": "usdc_out",
+            "docs": [
+              "What the pool paid."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "keeper_fee",
+            "docs": [
+              "The platform's keeper fee, paid to the treasury; the rest went to the vault."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "price",
+            "docs": [
+              "USDC atoms per token atom, scaled by 1e12."
+            ],
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TraderRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "launch",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader_account",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UpdateConfigArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "keeper",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "treasury",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "keeper_fee_bps",
+            "docs": [
+              "For launches created afterwards; existing launches keep their rate."
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "paused",
+            "type": {
+              "option": "bool"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

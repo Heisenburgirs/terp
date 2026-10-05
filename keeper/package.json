@@ -1,0 +1,23 @@
+{
+  "name": "@terp/keeper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "tsx --env-file-if-exists=../.env src/main.ts"
+  },
+  "dependencies": {
+    "@meteora-ag/dlmm": "^1.9.0",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "@terp/sdk": "workspace:*",
+    "bn.js": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.6",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3"
+  }
+}

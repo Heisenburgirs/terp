@@ -1,0 +1,17 @@
+{
+  "name": "terp-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "build:sdk": "pnpm --filter @terp/sdk build",
+    "test:sdk": "pnpm --filter @terp/sdk test",
+    "typecheck": "pnpm -r typecheck",
+    "keeper": "pnpm --filter @terp/keeper start",
+    "dev": "pnpm --filter @terp/app dev"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

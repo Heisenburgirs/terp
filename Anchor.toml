@@ -1,0 +1,22 @@
+[toolchain]
+package_manager = "pnpm"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+mock_swap = "39NpxonaWZ3CWr4BgTi8F18UZZ8h4uMUucaP1k6uNNbg"
+terp = "8mGW6pAB1H2mpyx8muVQTAEVf9dLLGxu5H3h4Ch2GtAh"
+
+[programs.mainnet]
+terp = "11111111111111111111111111111111"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test -p terp --lib && PHOENIX_MAINNET_BPF_PROGRAMS=1 cargo test --manifest-path tests-litesvm/Cargo.toml -- --test-threads=1"
+
+[hooks]

@@ -1,0 +1,23 @@
+[package]
+name = "terp-litesvm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Detached from the program workspace: the Phoenix fixture pins its own LiteSVM and Solana crates.
+[workspace]
+
+[dependencies]
+terp = { path = "../programs/terp", features = ["no-entrypoint"] }
+mock-swap = { path = "../programs/mock-swap", features = ["no-entrypoint"] }
+anchor-lang = "=1.0.2"
+base64 = "0.22"
+phoenix-rise-litesvm-test = "=0.6.12"
+litesvm = "0.16"
+serde_json = "1"
+sha2 = "0.10"
+solana-clock = "3"
+solana-instruction = "3"
+solana-pubkey = "3"
+solana-transaction-error = "3"
+spl-token-2022-interface = "2.1"

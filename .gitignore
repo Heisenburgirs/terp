@@ -1,0 +1,11 @@
+target/
+node_modules/
+.next/
+.anchor/
+test-ledger/
+*.log
+.env
+.env.local
+keys/
+dist/
+.localnet/

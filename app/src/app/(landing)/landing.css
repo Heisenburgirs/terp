@@ -1,0 +1,510 @@
+/*
+ * The landing page. Same system as globals.css (paper and ink, one accent, hairlines, flat, every
+ * corner `--radius`), set larger and with more air. Everything is scoped to `.landing` and
+ * `.landing-foot`, so nothing here reaches the app.
+ */
+
+main.landing {
+  max-width: none;
+  min-height: 0;
+  padding: 0;
+}
+
+.landing .wrap,
+.landing-foot .wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Hero */
+
+.landing .hero {
+  padding: clamp(56px, 13vh, 150px) 0 clamp(64px, 11vh, 128px);
+}
+.landing .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 clamp(28px, 6vh, 56px);
+  padding: 5px 11px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.landing .chip-dot {
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+}
+.landing h1 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.035em;
+  margin: 0 0 clamp(24px, 4vw, 44px) -0.05em;
+  font-size: clamp(5.5rem, 24vw, 14rem);
+  font-weight: 700;
+  line-height: 0.82;
+  letter-spacing: -0.065em;
+  text-transform: lowercase;
+}
+.landing h1 svg {
+  flex: none;
+  width: 0.2em;
+  height: 0.2em;
+  fill: var(--accent);
+}
+.landing .idea {
+  max-width: 27ch;
+  margin: 0 0 20px;
+  font-size: clamp(1.4rem, 3.4vw, 2.35rem);
+  font-weight: 500;
+  line-height: 1.16;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.landing .sub {
+  max-width: 54ch;
+  margin: 0 0 32px;
+  color: var(--muted);
+  font-size: 1.06rem;
+}
+.landing .jump {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.landing .jump a::after {
+  content: "↓";
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--accent);
+}
+
+/* Sections */
+
+.landing .block,
+.landing .band {
+  padding: clamp(64px, 10vw, 120px) 0;
+}
+.landing .band {
+  background: var(--field);
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  scroll-margin-top: 0;
+}
+.landing .ruled {
+  padding-top: 0;
+}
+.landing .ruled > .wrap::before {
+  content: "";
+  display: block;
+  margin-bottom: clamp(64px, 10vw, 120px);
+  border-top: 1px solid var(--rule);
+}
+.landing .label {
+  margin: 0 0 14px;
+  font-family: var(--mono);
+  font-weight: 500;
+}
+.landing h2 {
+  max-width: 20ch;
+  margin: 0 0 clamp(36px, 6vw, 64px);
+  font-size: clamp(1.75rem, 4.4vw, 2.9rem);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.028em;
+  text-transform: none;
+  text-wrap: balance;
+}
+.landing h3 {
+  font-size: 1.12rem;
+  letter-spacing: -0.01em;
+}
+
+/* The flow: four nodes on one track. Horizontal when there is room, vertical otherwise. */
+
+.landing .flow {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.landing .flow li {
+  position: relative;
+  padding-right: 32px;
+}
+/* the track */
+.landing .flow li::before {
+  content: "";
+  position: absolute;
+  top: 21px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--ink);
+}
+.landing .flow li:last-child::before {
+  right: 13px;
+}
+/* direction: a chevron where each segment ends */
+.landing .flow li::after {
+  content: "";
+  position: absolute;
+  top: 17px;
+  right: 13px;
+  width: 9px;
+  height: 9px;
+  border-top: 1px solid var(--ink);
+  border-right: 1px solid var(--ink);
+  transform: rotate(45deg);
+}
+.landing .node {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 43px;
+  height: 43px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.landing .step-body {
+  margin-top: 30px;
+}
+.landing .glyph {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 18px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-linecap: square;
+}
+.landing .flow h3 {
+  margin-bottom: 8px;
+  font-size: clamp(1.5rem, 2.6vw, 1.9rem);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+.landing .flow p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+}
+.landing .flow .tag {
+  display: inline-block;
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--accent);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.landing .loop {
+  margin: clamp(32px, 5vw, 52px) 0 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.landing .loop::before {
+  content: "↻";
+  margin-right: 8px;
+  color: var(--accent);
+}
+
+/* Points: what makes it different, and the risks */
+
+.landing .points {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 56px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.landing .points li {
+  padding: 22px 0 30px;
+  border-top: 1px solid var(--ink);
+}
+.landing .points h3 {
+  margin-bottom: 8px;
+}
+.landing .points p {
+  max-width: 52ch;
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Money */
+
+.landing .split {
+  display: flex;
+  height: 60px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.landing .to-vault {
+  flex: 97;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+.landing .to-platform {
+  flex: 3;
+  background: var(--ink);
+}
+.landing .split-key {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+.landing .split-key span:last-child {
+  text-align: right;
+}
+.landing .money {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 40px;
+  margin: clamp(36px, 6vw, 60px) 0 0;
+}
+.landing .money > div {
+  padding-top: 16px;
+  border-top: 1px solid var(--ink);
+}
+.landing .money dt {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.landing .money dd {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--sans);
+  overflow-wrap: break-word;
+}
+.landing .money dd.figure {
+  margin: 10px 0 12px;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: clamp(1.3rem, 2.4vw, 1.7rem);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+/* Risks: the one place the page uses red */
+
+.landing .risk {
+  border-top: 1px solid var(--ink);
+}
+.landing .risk .label {
+  color: var(--bad);
+}
+.landing .risk .points li {
+  position: relative;
+  padding-left: 22px;
+  border-top-color: var(--rule);
+}
+.landing .risk .points li::before {
+  content: "";
+  position: absolute;
+  top: 22px;
+  bottom: 30px;
+  left: 0;
+  width: 2px;
+  background: var(--bad);
+}
+.landing .risk .points p {
+  color: var(--ink);
+}
+
+/* Footer */
+
+.landing-foot {
+  border-top: 1px solid var(--ink);
+  padding: 28px 0 44px;
+  font-size: 0.9rem;
+}
+.landing-foot .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 32px;
+}
+.landing-foot p {
+  margin: 0;
+}
+.landing-foot .stack {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.9;
+}
+
+/* Narrow: the track turns vertical */
+
+@media (max-width: 900px) {
+  .landing .flow {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 620px;
+  }
+  .landing .flow li {
+    display: grid;
+    grid-template-columns: 43px minmax(0, 1fr);
+    column-gap: 22px;
+    padding: 0 0 48px;
+  }
+  .landing .flow li:last-child {
+    padding-bottom: 20px;
+  }
+  .landing .flow li::before,
+  .landing .flow li:last-child::before {
+    top: 0;
+    bottom: 0;
+    left: 21px;
+    right: auto;
+    width: 1px;
+    height: auto;
+  }
+  .landing .flow li::after {
+    top: auto;
+    right: auto;
+    bottom: 2px;
+    left: 17px;
+    transform: rotate(135deg);
+  }
+  .landing .step-body {
+    margin-top: 4px;
+  }
+  .landing .glyph {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 12px;
+  }
+  .landing .loop {
+    margin-top: 20px;
+  }
+}
+
+@media (max-width: 760px) {
+  .landing .wrap,
+  .landing-foot .wrap {
+    padding: 0 18px;
+  }
+  .landing .points,
+  .landing .money {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .landing .money > div {
+    padding-bottom: 26px;
+  }
+  .landing .money > div:last-child {
+    padding-bottom: 0;
+  }
+}
+
+/* Motion: an entrance for the hero and a marker that walks the track. Off when the reader asks. */
+
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.landing) {
+    scroll-behavior: smooth;
+  }
+  .landing .hero .wrap > * {
+    animation: landing-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .landing .hero .wrap > :nth-child(2) {
+    animation-delay: 0.06s;
+  }
+  .landing .hero .wrap > :nth-child(3) {
+    animation-delay: 0.14s;
+  }
+  .landing .hero .wrap > :nth-child(4) {
+    animation-delay: 0.2s;
+  }
+  .landing .hero .wrap > :nth-child(5) {
+    animation-delay: 0.26s;
+  }
+  .landing .flow::after {
+    content: "";
+    position: absolute;
+    top: 18px;
+    left: 0;
+    width: 7px;
+    height: 7px;
+    background: var(--accent);
+    animation: landing-walk-x 9s linear infinite;
+  }
+  @media (max-width: 900px) {
+    .landing .flow::after {
+      top: 0;
+      left: 18px;
+      animation-name: landing-walk-y;
+    }
+  }
+}
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes landing-walk-x {
+  0% {
+    left: 0;
+    opacity: 0;
+  }
+  6%,
+  94% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(100% - 20px);
+    opacity: 0;
+  }
+}
+@keyframes landing-walk-y {
+  0% {
+    top: 0;
+    opacity: 0;
+  }
+  6%,
+  94% {
+    opacity: 1;
+  }
+  100% {
+    top: calc(100% - 20px);
+    opacity: 0;
+  }
+}

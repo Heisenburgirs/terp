@@ -1,0 +1,31 @@
+{
+  "name": "@terp/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "preflight": "tsx --env-file-if-exists=../.env preflight.ts",
+    "measure-views": "tsx --env-file-if-exists=../.env measure-views.ts",
+    "init-config": "tsx --env-file-if-exists=../.env init-config.ts",
+    "onboard-trader": "tsx --env-file-if-exists=../.env onboard-trader.ts",
+    "set-paused": "tsx --env-file-if-exists=../.env set-paused.ts",
+    "create-lookup-table": "tsx --env-file-if-exists=../.env create-lookup-table.ts",
+    "add-market": "tsx --env-file-if-exists=../.env add-market.ts",
+    "localnet:setup": "tsx localnet/setup.ts",
+    "localnet:e2e": "tsx localnet/e2e.ts"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "@terp/sdk": "workspace:*",
+    "@meteora-ag/dlmm": "^1.9.0",
+    "@solana/spl-token": "^0.4.14",
+    "bn.js": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3",
+    "@types/bn.js": "^5.1.6"
+  }
+}
