@@ -819,14 +819,12 @@ impl Ctx {
         transfer
     }
 
-    /// TEST ONLY: overwrites a launch's hook account list with the first `count` of its
-    /// accounts, to probe how many Token-2022 itself can resolve.
-    pub fn force_hook_list_len(&mut self, keys: &LaunchKeys, count: usize) {
-        let metas = self.hook_accounts(keys);
+    /// TEST ONLY: overwrites a launch hook account list with `metas`, to probe Token-2022 itself.
+    pub fn force_hook_list(&mut self, keys: &LaunchKeys, metas: &[AccountMeta]) {
         let mut data = vec![105, 37, 101, 197, 75, 251, 102, 26];
-        data.extend_from_slice(&((4 + count * 35) as u32).to_le_bytes());
-        data.extend_from_slice(&(count as u32).to_le_bytes());
-        for meta in metas.iter().take(count) {
+        data.extend_from_slice(&((4 + metas.len() * 35) as u32).to_le_bytes());
+        data.extend_from_slice(&(metas.len() as u32).to_le_bytes());
+        for meta in metas {
             data.push(0);
             data.extend_from_slice(meta.pubkey.as_ref());
             data.push(0);
@@ -837,6 +835,37 @@ impl Ctx {
         account.lamports = 1_000_000_000;
         account.data = data;
         self.px.svm.set_account(list, account).unwrap();
+    }
+
+    /// TEST ONLY: a transfer carrying exactly `metas` as its hook accounts.
+    pub fn transfer_with_metas(
+        &mut self,
+        from_seed: &str,
+        keys: &LaunchKeys,
+        to_token_account: &Pubkey,
+        amount: u64,
+        metas: &[AccountMeta],
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let from = self.px.signer_pubkey(from_seed);
+        let mut transfer = token_ix::transfer_checked(
+            &TOKEN_2022_PROGRAM,
+            &self.token_ata(&from, &keys.mint),
+            &keys.mint,
+            to_token_account,
+            &from,
+            &[],
+            amount,
+            DECIMALS,
+        )
+        .unwrap();
+        transfer.accounts.extend(metas.iter().cloned());
+        transfer
+            .accounts
+            .push(AccountMeta::new_readonly(terp::ID, false));
+        transfer
+            .accounts
+            .push(AccountMeta::new_readonly(self.hook_list(keys), false));
+        self.send(from_seed, vec![transfer])
     }
 
     /// A transfer carrying only the first `count` hook accounts (plus program and list).
