@@ -160,6 +160,7 @@ async function main() {
   const mintKey = Keypair.generate();
   const mint = mintKey.publicKey;
   const launchAddress = launchPda(mint);
+  console.log(`  mint ${mint.toBase58()}`);
   const activeId: number = DLMM.getBinIdFromPrice(START_PRICE * 10 ** (6 - DECIMALS), BIN_STEP_BPS, false);
   const startPrice = Number(getPriceOfBinByBinId(activeId, BIN_STEP_BPS).toString());
   // what a sale into the pool realizes at the start: price less the transfer tax and the pool fee

@@ -1053,6 +1053,151 @@
       ]
     },
     {
+      "name": "init_hook",
+      "discriminator": [
+        32,
+        6,
+        91,
+        14,
+        92,
+        149,
+        253,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "extra_account_metas",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  120,
+                  116,
+                  114,
+                  97,
+                  45,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "launch",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  117,
+                  110,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "launch.mint",
+                "account": "Launch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "desk",
+          "accounts": [
+            {
+              "name": "phoenix_program",
+              "address": "EtrnLzgbS7nMMy5fbD42kXiUzGg8XQzJ972Xtk1cjWih"
+            },
+            {
+              "name": "log_authority",
+              "address": "GdxfTLSsdSY37G6fZoYtdGDSfgFnbT2EmRpuePZxWShS"
+            },
+            {
+              "name": "global_config",
+              "writable": true,
+              "address": "2zskx2iyCvb6Stg7RBZkt1f6MrF4dpYtMG3yMvKwqtUZ"
+            },
+            {
+              "name": "trader_account",
+              "writable": true
+            },
+            {
+              "name": "perp_asset_map",
+              "writable": true
+            },
+            {
+              "name": "orderbook",
+              "writable": true
+            },
+            {
+              "name": "spline",
+              "writable": true
+            },
+            {
+              "name": "hawkeye_program",
+              "address": "RiSeVw3ZjNfsaXPRb4mgaqYaEEt41pNNJoDvVh7pgQj"
+            }
+          ]
+        },
+        {
+          "name": "instructions",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "pay_claim",
       "discriminator": [
         73,
@@ -1627,6 +1772,77 @@
       "args": []
     },
     {
+      "name": "transfer_hook",
+      "docs": [
+        "Called by Token-2022 inside every transfer of a launched token."
+      ],
+      "discriminator": [
+        105,
+        37,
+        101,
+        197,
+        75,
+        251,
+        102,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "source"
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "destination"
+        },
+        {
+          "name": "authority"
+        },
+        {
+          "name": "extra_account_metas",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  120,
+                  116,
+                  114,
+                  97,
+                  45,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "unwrap_canonical",
       "discriminator": [
         19,
@@ -2177,6 +2393,16 @@
       "code": 6040,
       "name": "SupplyNotZero",
       "msg": "Supply is not zero or claims are still outstanding"
+    },
+    {
+      "code": 6041,
+      "name": "NotTransferring",
+      "msg": "The transfer hook can only be called by Token-2022 during a transfer"
+    },
+    {
+      "code": 6042,
+      "name": "InvalidHookAccount",
+      "msg": "Unexpected transfer hook account"
     }
   ],
   "types": [
@@ -2741,6 +2967,13 @@
           },
           {
             "name": "keeper_fees_paid",
+            "type": "u64"
+          },
+          {
+            "name": "last_rebalance_slot",
+            "docs": [
+              "Slot of the last deployment, or of the transfer hook's last look at the position."
+            ],
             "type": "u64"
           },
           {

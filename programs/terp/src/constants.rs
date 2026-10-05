@@ -5,6 +5,21 @@ pub const LAUNCH_SEED: &[u8] = b"launch";
 pub const TAX_SEED: &[u8] = b"tax";
 pub const CLAIM_SEED: &[u8] = b"claim";
 pub const MARKET_SEED: &[u8] = b"market";
+/// Seed of the account list Token-2022 reads for a mint's transfer hook (fixed by its interface).
+pub const HOOK_SEED: &[u8] = b"extra-account-metas";
+/// Instruction discriminator Token-2022 calls a transfer hook with: the first 8 bytes of
+/// sha256("spl-transfer-hook-interface:execute").
+pub const EXECUTE_DISCRIMINATOR: [u8; 8] = [105, 37, 101, 197, 75, 251, 102, 26];
+/// The hook acts only when called at most this deep: 2 from a plain transfer, 3 from a pool
+/// swap sent directly. Acting adds two more levels and the runtime allows five.
+pub const HOOK_MAX_STACK_HEIGHT: usize = 3;
+/// The hook acts only in a transaction that asked for at least this compute-unit limit.
+pub const HOOK_MIN_COMPUTE_UNITS: u32 = 1_000_000;
+pub const INSTRUCTIONS_SYSVAR_ID: Pubkey = pubkey!("Sysvar1nstructions1111111111111111111111111");
+pub const COMPUTE_BUDGET_PROGRAM_ID: Pubkey =
+    pubkey!("ComputeBudget111111111111111111111111111111");
+/// The hook looks at the position at most once per this many slots (~10s).
+pub const HOOK_MIN_INTERVAL_SLOTS: u64 = 25;
 
 /// Mainnet USDC, the only quote and collateral asset of the MVP.
 pub const USDC_MINT: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");

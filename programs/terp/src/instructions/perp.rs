@@ -8,7 +8,7 @@ use crate::{
     error::VaultError,
     events::{CanonicalUnwrapped, ClaimsFunded, Deleveraged, Deployed},
     math,
-    phoenix::Fill,
+    phoenix::{Fill, PerpView},
     state::{Direction, Launch, ProtocolConfig},
 };
 
@@ -41,14 +41,32 @@ pub struct Deploy<'info> {
 /// The decision depends on leverage only, not on whether the position is in profit.
 pub fn deploy<'info>(ctx: Context<'info, Deploy<'info>>) -> Result<()> {
     require!(!ctx.accounts.config.paused, VaultError::Paused);
-    let accounts = &ctx.accounts;
-    let launch = &accounts.launch;
-    let venue = Venue::load(
-        launch,
-        &accounts.phoenix,
-        &accounts.ember,
-        ctx.remaining_accounts,
-    )?;
+    let event = {
+        let accounts = &ctx.accounts;
+        let venue = Venue::load(
+            &accounts.launch,
+            &accounts.phoenix,
+            &accounts.ember,
+            ctx.remaining_accounts,
+        )?;
+        let before = venue.view()?;
+        run_deploy(&accounts.launch, &venue, before, false)?.ok_or(VaultError::NothingToDeploy)?
+    };
+    record_deploy(&mut ctx.accounts.launch, event)
+}
+
+/// A deployment, for the keeper's instruction and for the transfer hook. `before` is the
+/// account as Phoenix reports it before any deposit.
+///
+/// With `lenient`, every condition under which there is nothing safe to do returns `None`
+/// before anything has moved, where the keeper's instruction returns an error: the hook must
+/// not fail a transfer because the vault had no work.
+pub(crate) fn run_deploy<'info>(
+    launch: &Account<'info, Launch>,
+    venue: &Venue<'_, 'info>,
+    mut before: PerpView,
+    lenient: bool,
+) -> Result<Option<Deployed>> {
     let mint_key = launch.mint;
     let seeds: &[&[u8]] = &[LAUNCH_SEED, mint_key.as_ref(), &[launch.bump]];
 
@@ -58,51 +76,48 @@ pub fn deploy<'info>(ctx: Context<'info, Deploy<'info>>) -> Result<()> {
     } else {
         0
     };
+    // the account as it will be once the deposit is in
+    before.collateral = before.collateral.saturating_add(deposit as i64);
+    // an account Phoenix is about to liquidate is not topped up
+    if before.is_liquidatable() {
+        return if lenient {
+            Ok(None)
+        } else {
+            err!(VaultError::AccountAtRisk)
+        };
+    }
+    let leverage = before.leverage_bps();
+
+    let mut lots = top_up_lots(launch, &before)?;
+    if lots > 0 {
+        if lenient {
+            if !venue.mark_is_fresh()? {
+                lots = 0;
+            }
+        } else {
+            venue.require_fresh_mark()?;
+        }
+    }
+    if deposit == 0 && lots == 0 {
+        return if lenient {
+            Ok(None)
+        } else {
+            err!(VaultError::NothingToDeploy)
+        };
+    }
+
     if deposit > 0 {
         venue.deposit(deposit, seeds)?;
     }
-
-    let before = venue.view()?;
-    // an account Phoenix is about to liquidate is not topped up: the deposit reverts with this
-    require!(!before.is_liquidatable(), VaultError::AccountAtRisk);
-    let leverage = before.leverage_bps();
-
-    let mut lots = 0;
-    if before.notional == 0 || leverage < launch.min_leverage_bps as u64 {
-        let lot_value = before
-            .mark_price_ticks
-            .checked_mul(launch.tick_size)
-            .ok_or(VaultError::MathOverflow)?;
-        require!(lot_value > 0, VaultError::InvalidPhoenixReturnData);
-        // aim 2% under target, leaving room for the taker fee and the order's slippage
-        let aim =
-            math::bps_of_u32(before.equity().max(0) as u64, launch.target_leverage_bps)? / 100 * 98;
-        lots = aim.saturating_sub(before.notional) / lot_value;
-    }
-    require!(deposit > 0 || lots > 0, VaultError::NothingToDeploy);
-
     let mut fill = Fill::default();
     let mut after = before;
     if lots > 0 {
-        venue.require_fresh_mark()?;
         fill = venue.order(true, lots, before.mark_price_ticks, seeds)?;
         after = venue.view()?;
-        require!(
-            if launch.direction == Direction::Long {
-                after.base_lots >= 0
-            } else {
-                after.base_lots <= 0
-            },
-            VaultError::WrongPositionSide
-        );
-        require!(!after.is_liquidatable(), VaultError::AccountAtRisk);
-        require!(
-            after.leverage_bps() <= with_tolerance(launch.target_leverage_bps as u64),
-            VaultError::LeverageTooHigh
-        );
+        check_after_buy(launch, &after)?;
     }
 
-    let event = Deployed {
+    Ok(Some(Deployed {
         launch: launch.key(),
         deposited: deposit,
         leverage_bps_before: leverage,
@@ -115,12 +130,85 @@ pub fn deploy<'info>(ctx: Context<'info, Deploy<'info>>) -> Result<()> {
         notional_after: after.notional,
         equity_after: after.equity(),
         leverage_bps_after: after.leverage_bps(),
-    };
-    let launch = &mut ctx.accounts.launch;
+    }))
+}
+
+/// Base lots that take leverage back up to target, or zero when it is at or above the launch
+/// minimum. An account with no position is always below it.
+fn top_up_lots(launch: &Launch, account: &PerpView) -> Result<u64> {
+    if account.notional > 0 && account.leverage_bps() >= launch.min_leverage_bps as u64 {
+        return Ok(0);
+    }
+    let lot_value = account
+        .mark_price_ticks
+        .checked_mul(launch.tick_size)
+        .ok_or(VaultError::MathOverflow)?;
+    require!(lot_value > 0, VaultError::InvalidPhoenixReturnData);
+    // aim 2% under target, leaving room for the taker fee and the order's slippage
+    let aim =
+        math::bps_of_u32(account.equity().max(0) as u64, launch.target_leverage_bps)? / 100 * 98;
+    Ok(aim.saturating_sub(account.notional) / lot_value)
+}
+
+fn check_after_buy(launch: &Launch, after: &PerpView) -> Result<()> {
+    require!(
+        if launch.direction == Direction::Long {
+            after.base_lots >= 0
+        } else {
+            after.base_lots <= 0
+        },
+        VaultError::WrongPositionSide
+    );
+    require!(!after.is_liquidatable(), VaultError::AccountAtRisk);
+    require!(
+        after.leverage_bps() <= with_tolerance(launch.target_leverage_bps as u64),
+        VaultError::LeverageTooHigh
+    );
+    Ok(())
+}
+
+/// The transfer hook's share of a deployment: no deposit, only the order that takes leverage
+/// back up to target. Returns `None`, before anything has moved, whenever there is nothing safe
+/// to do.
+pub(crate) fn run_top_up(
+    launch: &Account<Launch>,
+    desk: &Desk,
+    before: PerpView,
+) -> Result<Option<Deployed>> {
+    if before.is_liquidatable() {
+        return Ok(None);
+    }
+    let lots = top_up_lots(launch, &before)?;
+    if lots == 0 || !desk.mark_is_fresh()? {
+        return Ok(None);
+    }
+    let mint_key = launch.mint;
+    let seeds: &[&[u8]] = &[LAUNCH_SEED, mint_key.as_ref(), &[launch.bump]];
+    let fill = desk.order(true, lots, before.mark_price_ticks, seeds)?;
+    let after = desk.view()?;
+    check_after_buy(launch, &after)?;
+    Ok(Some(Deployed {
+        launch: launch.key(),
+        deposited: 0,
+        leverage_bps_before: before.leverage_bps(),
+        unrealized_pnl: before.unrealized_pnl,
+        increased: true,
+        requested_base_lots: lots,
+        filled_base_lots: fill.base_lots,
+        filled_quote_lots: fill.quote_lots,
+        base_lots_after: after.base_lots,
+        notional_after: after.notional,
+        equity_after: after.equity(),
+        leverage_bps_after: after.leverage_bps(),
+    }))
+}
+
+pub(crate) fn record_deploy(launch: &mut Account<Launch>, event: Deployed) -> Result<()> {
     launch.usdc_deposited = launch
         .usdc_deposited
-        .checked_add(deposit)
+        .checked_add(event.deposited)
         .ok_or(VaultError::MathOverflow)?;
+    launch.last_rebalance_slot = Clock::get()?.slot;
     emit!(event);
     Ok(())
 }
@@ -140,24 +228,54 @@ pub struct VenueOp<'info> {
 /// This is what keeps the position open through a fall, and it does not depend on the keeper.
 pub fn deleverage<'info>(ctx: Context<'info, VenueOp<'info>>) -> Result<()> {
     let accounts = &ctx.accounts;
-    let launch = &accounts.launch;
     let venue = Venue::load(
-        launch,
+        &accounts.launch,
         &accounts.phoenix,
         &accounts.ember,
         ctx.remaining_accounts,
     )?;
+    let before = venue.view()?;
+    let event = run_deleverage(
+        &accounts.launch,
+        &venue.desk(),
+        before,
+        accounts.caller.key(),
+        false,
+    )?
+    .ok_or(VaultError::NotDeleveragable)?;
+    emit!(event);
+    Ok(())
+}
+
+/// A deleverage, for the open instruction and for the transfer hook; `lenient` as in
+/// `run_deploy`.
+pub(crate) fn run_deleverage(
+    launch: &Account<Launch>,
+    venue: &Desk,
+    before: PerpView,
+    caller: Pubkey,
+    lenient: bool,
+) -> Result<Option<Deleveraged>> {
     let mint_key = launch.mint;
     let seeds: &[&[u8]] = &[LAUNCH_SEED, mint_key.as_ref(), &[launch.bump]];
 
-    let before = venue.view()?;
     let leverage = before.leverage_bps();
-    require!(
-        before.notional > 0
-            && (before.is_liquidatable() || leverage > launch.max_leverage_bps as u64),
-        VaultError::NotDeleveragable
-    );
-    venue.require_fresh_mark()?;
+    if !(before.notional > 0
+        && (before.is_liquidatable() || leverage > launch.max_leverage_bps as u64))
+    {
+        return if lenient {
+            Ok(None)
+        } else {
+            err!(VaultError::NotDeleveragable)
+        };
+    }
+    if lenient {
+        if !venue.mark_is_fresh()? {
+            return Ok(None);
+        }
+    } else {
+        require!(venue.mark_is_fresh()?, VaultError::StaleMarkPrice);
+    }
 
     // closing a fraction f at mark leaves leverage L(1 - f); an account with no equity closes all
     let base = before.base_lots.unsigned_abs();
@@ -170,21 +288,21 @@ pub fn deleverage<'info>(ctx: Context<'info, VenueOp<'info>>) -> Result<()> {
     };
     let fill = venue.order(false, lots, before.mark_price_ticks, seeds)?;
     let after = venue.view()?;
+    // inside a transfer, an order the book could not fill is not a reason to fail the transfer
     require!(
-        after.notional < before.notional,
+        lenient || after.notional < before.notional,
         VaultError::ReductionIncomplete
     );
 
-    emit!(Deleveraged {
+    Ok(Some(Deleveraged {
         launch: launch.key(),
-        caller: accounts.caller.key(),
+        caller,
         requested_base_lots: lots,
         filled_base_lots: fill.base_lots,
         filled_quote_lots: fill.quote_lots,
         leverage_bps_before: leverage,
         leverage_bps_after: after.leverage_bps(),
-    });
-    Ok(())
+    }))
 }
 
 /// Redeemers whose withdrawal Phoenix queued hold a fixed USDC claim. If the queued withdrawal

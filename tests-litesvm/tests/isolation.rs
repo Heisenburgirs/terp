@@ -171,7 +171,7 @@ fn the_keeper_and_the_admin_have_no_path_to_vault_funds() {
 }
 
 /// Every instruction of the program, sorted.
-const EXPECTED: [&str; 15] = [
+const EXPECTED: [&str; 17] = [
     "add_market",
     "collect_tax",
     "convert_tax",
@@ -180,11 +180,13 @@ const EXPECTED: [&str; 15] = [
     "deploy",
     "fund_claims",
     "init_config",
+    "init_hook",
     "pay_claim",
     "redeem",
     "register_trader",
     "set_pool",
     "sweep_residual",
+    "transfer_hook",
     "unwrap_canonical",
     "update_config",
 ];

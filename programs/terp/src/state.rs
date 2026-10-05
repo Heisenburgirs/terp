@@ -123,6 +123,8 @@ pub struct Launch {
     /// What reached the vault: pool proceeds less the keeper fee.
     pub usdc_converted: u64,
     pub keeper_fees_paid: u64,
+    /// Slot of the last deployment, or of the transfer hook's last look at the position.
+    pub last_rebalance_slot: u64,
     pub usdc_deposited: u64,
     pub usdc_withdrawn: u64,
     pub tokens_redeemed: u64,

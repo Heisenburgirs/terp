@@ -64,6 +64,8 @@ pub const TOKEN_2022_PROGRAM: Pubkey =
 pub const ATA_PROGRAM: Pubkey =
     Pubkey::from_str_const("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 pub const SYSTEM_PROGRAM: Pubkey = Pubkey::from_str_const("11111111111111111111111111111111");
+pub const INSTRUCTIONS_SYSVAR: Pubkey =
+    Pubkey::from_str_const("Sysvar1nstructions1111111111111111111111111");
 const COMPUTE_BUDGET_PROGRAM: Pubkey =
     Pubkey::from_str_const("ComputeBudget111111111111111111111111111111");
 
@@ -195,6 +197,10 @@ pub struct MintOpts {
     pub fee_config_authority: bool,
     pub foreign_withheld_authority: bool,
     pub permanent_delegate: bool,
+    /// The mint's transfer hook program, with no authority able to change it.
+    pub hook: Option<Pubkey>,
+    /// Gives the creator authority over the hook, which a launch must refuse.
+    pub hook_authority: bool,
 }
 
 impl MintOpts {
@@ -207,6 +213,16 @@ impl MintOpts {
             fee_config_authority: false,
             foreign_withheld_authority: false,
             permanent_delegate: false,
+            hook: None,
+            hook_authority: false,
+        }
+    }
+
+    /// A launch-ready mint whose transfers call the terp program's hook.
+    pub fn hooked(supply: u64) -> Self {
+        Self {
+            hook: Some(terp::ID),
+            ..Self::valid(supply)
         }
     }
 }
@@ -329,6 +345,9 @@ impl Ctx {
                 SdkLocalnetProgram::new(mock_swap::ID, deploy_dir().join("mock_swap.so")),
             ],
         );
+        // Run with the features active on mainnet-beta rather than LiteSVM's default of none.
+        let svm = std::mem::replace(&mut px.svm, litesvm::LiteSVM::new());
+        px.svm = svm.with_mainnet_features();
         px.execute_setup();
 
         let addresses = px.fixture.addresses.clone();
@@ -487,8 +506,18 @@ impl Ctx {
         payer: &str,
         instructions: Vec<Instruction>,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        self.send_with_budget(payer, instructions, 1_400_000)
+    }
+
+    /// `send` with a chosen compute-unit limit.
+    pub fn send_with_budget(
+        &mut self,
+        payer: &str,
+        instructions: Vec<Instruction>,
+        units: u32,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let mut budget = vec![2];
-        budget.extend_from_slice(&1_400_000u32.to_le_bytes());
+        budget.extend_from_slice(&units.to_le_bytes());
         let mut all = vec![Instruction {
             program_id: COMPUTE_BUDGET_PROGRAM,
             accounts: vec![],
@@ -691,6 +720,184 @@ impl Ctx {
         self.send(from_seed, vec![transfer])
     }
 
+    /// The accounts a transfer of a hooked launch token carries after its own: the hook's
+    /// account list in the order `init_hook` wrote it, then the hook program and the list itself.
+    pub fn hook_accounts(&self, keys: &LaunchKeys) -> Vec<AccountMeta> {
+        let mut metas = vec![
+            AccountMeta::new_readonly(config_pda(), false),
+            AccountMeta::new(keys.launch, false),
+        ];
+        metas.extend(self.desk_accounts(keys).to_account_metas(None));
+        metas.push(AccountMeta::new_readonly(INSTRUCTIONS_SYSVAR, false));
+        metas.extend(
+            self.exchange
+                .tail
+                .iter()
+                .map(|k| AccountMeta::new(*k, false)),
+        );
+        metas.push(AccountMeta::new_readonly(terp::ID, false));
+        metas.push(AccountMeta::new_readonly(self.hook_list(keys), false));
+        metas
+    }
+
+    pub fn hook_list(&self, keys: &LaunchKeys) -> Pubkey {
+        pda(&[b"extra-account-metas", keys.mint.as_ref()], &terp::ID)
+    }
+
+    /// Writes the hook's account list for a launch. Open to anyone.
+    pub fn init_hook(
+        &mut self,
+        keys: &LaunchKeys,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let init = self.with_tail(ix(
+            terp::ID,
+            terp::accounts::InitHook {
+                payer: self.caller,
+                extra_account_metas: self.hook_list(keys),
+                config: config_pda(),
+                launch: keys.launch,
+                desk: self.desk_accounts(keys),
+                instructions: INSTRUCTIONS_SYSVAR,
+                system_program: SYSTEM_PROGRAM,
+            },
+            terp::instruction::InitHook {},
+        ));
+        self.send(CALLER, vec![init])
+    }
+
+    /// A wallet-to-wallet transfer of a hooked launch token, as a wallet would build it.
+    /// `with_work` leaves out the hook's working accounts when false (before `init_hook`).
+    pub fn transfer_hooked(
+        &mut self,
+        from_seed: &str,
+        keys: &LaunchKeys,
+        to_token_account: &Pubkey,
+        amount: u64,
+        with_work: bool,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let transfer =
+            self.hooked_transfer_ix(from_seed, keys, to_token_account, amount, with_work);
+        self.send(from_seed, vec![transfer])
+    }
+
+    /// The same transfer in a transaction with a compute-unit limit of `units`.
+    pub fn transfer_hooked_with_budget(
+        &mut self,
+        from_seed: &str,
+        keys: &LaunchKeys,
+        to_token_account: &Pubkey,
+        amount: u64,
+        units: u32,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let transfer = self.hooked_transfer_ix(from_seed, keys, to_token_account, amount, true);
+        self.send_with_budget(from_seed, vec![transfer], units)
+    }
+
+    fn hooked_transfer_ix(
+        &self,
+        from_seed: &str,
+        keys: &LaunchKeys,
+        to_token_account: &Pubkey,
+        amount: u64,
+        with_work: bool,
+    ) -> Instruction {
+        let from = self.px.signer_pubkey(from_seed);
+        let mut transfer = token_ix::transfer_checked(
+            &TOKEN_2022_PROGRAM,
+            &self.token_ata(&from, &keys.mint),
+            &keys.mint,
+            to_token_account,
+            &from,
+            &[],
+            amount,
+            DECIMALS,
+        )
+        .unwrap();
+        let extra = self.hook_accounts(keys);
+        let skip = if with_work { 0 } else { extra.len() - 2 };
+        transfer.accounts.extend(extra.into_iter().skip(skip));
+        transfer
+    }
+
+    /// TEST ONLY: overwrites a launch's hook account list with the first `count` of its
+    /// accounts, to probe how many Token-2022 itself can resolve.
+    pub fn force_hook_list_len(&mut self, keys: &LaunchKeys, count: usize) {
+        let metas = self.hook_accounts(keys);
+        let mut data = vec![105, 37, 101, 197, 75, 251, 102, 26];
+        data.extend_from_slice(&((4 + count * 35) as u32).to_le_bytes());
+        data.extend_from_slice(&(count as u32).to_le_bytes());
+        for meta in metas.iter().take(count) {
+            data.push(0);
+            data.extend_from_slice(meta.pubkey.as_ref());
+            data.push(0);
+            data.push(meta.is_writable as u8);
+        }
+        let list = self.hook_list(keys);
+        let mut account = self.px.svm.get_account(&list).unwrap();
+        account.lamports = 1_000_000_000;
+        account.data = data;
+        self.px.svm.set_account(list, account).unwrap();
+    }
+
+    /// A transfer carrying only the first `count` hook accounts (plus program and list).
+    pub fn transfer_with_hook_accounts(
+        &mut self,
+        from_seed: &str,
+        keys: &LaunchKeys,
+        to_token_account: &Pubkey,
+        amount: u64,
+        count: usize,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let from = self.px.signer_pubkey(from_seed);
+        let mut transfer = token_ix::transfer_checked(
+            &TOKEN_2022_PROGRAM,
+            &self.token_ata(&from, &keys.mint),
+            &keys.mint,
+            to_token_account,
+            &from,
+            &[],
+            amount,
+            DECIMALS,
+        )
+        .unwrap();
+        let extra = self.hook_accounts(keys);
+        let n = extra.len();
+        transfer.accounts.extend(extra.iter().take(count).cloned());
+        transfer.accounts.extend(extra.into_iter().skip(n - 2));
+        self.send(from_seed, vec![transfer])
+    }
+
+    /// Calls the hook's instruction directly, the way an attacker would, instead of through a
+    /// Token-2022 transfer.
+    pub fn call_hook_directly(
+        &mut self,
+        from_seed: &str,
+        keys: &LaunchKeys,
+        to_token_account: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let from = self.px.signer_pubkey(from_seed);
+        let mut accounts = vec![
+            AccountMeta::new_readonly(self.token_ata(&from, &keys.mint), false),
+            AccountMeta::new_readonly(keys.mint, false),
+            AccountMeta::new_readonly(*to_token_account, false),
+            AccountMeta::new_readonly(from, false),
+            AccountMeta::new_readonly(self.hook_list(keys), false),
+        ];
+        let mut extra = self.hook_accounts(keys);
+        extra.truncate(extra.len() - 2);
+        accounts.extend(extra);
+        let mut data = vec![105, 37, 101, 197, 75, 251, 102, 26];
+        data.extend_from_slice(&(1_000 * TOKEN).to_le_bytes());
+        self.send(
+            from_seed,
+            vec![Instruction {
+                program_id: terp::ID,
+                accounts,
+                data,
+            }],
+        )
+    }
+
     /// Creates a Token-2022 mint with a transfer fee and mints the whole supply to the creator.
     pub fn create_mint(&mut self, opts: MintOpts) -> Pubkey {
         self.mint_counter += 1;
@@ -702,6 +909,9 @@ impl Ctx {
         let mut extensions = vec![ExtensionType::TransferFeeConfig];
         if opts.permanent_delegate {
             extensions.push(ExtensionType::PermanentDelegate);
+        }
+        if opts.hook.is_some() {
+            extensions.push(ExtensionType::TransferHook);
         }
         let space = ExtensionType::try_calculate_account_len::<Mint>(&extensions).unwrap();
         let lamports = self.px.svm.minimum_balance_for_rent_exemption(space);
@@ -738,6 +948,17 @@ impl Ctx {
             instructions.push(
                 token_ix::initialize_permanent_delegate(&TOKEN_2022_PROGRAM, &mint, &creator)
                     .unwrap(),
+            );
+        }
+        if let Some(program) = opts.hook {
+            instructions.push(
+                spl_token_2022_interface::extension::transfer_hook::instruction::initialize(
+                    &TOKEN_2022_PROGRAM,
+                    &mint,
+                    opts.hook_authority.then_some(creator),
+                    Some(program),
+                )
+                .unwrap(),
             );
         }
         instructions.extend([
@@ -1102,6 +1323,19 @@ impl Ctx {
             spline: keys.spline,
             global_vault: self.exchange.global_vault,
             withdraw_queue: self.exchange.withdraw_queue,
+            hawkeye_program: HAWKEYE_PROGRAM_ID,
+        }
+    }
+
+    fn desk_accounts(&self, keys: &LaunchKeys) -> terp::accounts::DeskAccounts {
+        terp::accounts::DeskAccounts {
+            phoenix_program: PHOENIX_PROGRAM_ID,
+            log_authority: PHOENIX_LOG_AUTHORITY,
+            global_config: PHOENIX_GLOBAL_CONFIG,
+            trader_account: keys.trader_account,
+            perp_asset_map: self.exchange.perp_asset_map,
+            orderbook: keys.orderbook,
+            spline: keys.spline,
             hawkeye_program: HAWKEYE_PROGRAM_ID,
         }
     }
