@@ -1,45 +1,62 @@
 /*
- * Terp. Paper and ink, one accent, hairlines.
+ * Terp. A piece of music hardware: a matte black slab, lit pads, control keys.
  *
  * Rules of the system, so additions stay consistent:
- * - colour comes only from the variables below; `--accent` is the single accent, `--bad` is for
- *   errors and risk and nothing else; caution is ink weight, not a third colour
- * - flat: 1px rules, no shadows, no gradients; every corner is `--radius`
- * - `--sans` for words, `--mono` (tabular) for every figure, address and ticker
+ * - dark only. Surfaces are `--slab` (page), `--deck` (cards, dialogs), `--key` (controls) and
+ *   `--line` (hairlines). Text is `--ink` or `--muted` on those, never coloured text on a colour.
+ * - colour comes only from the pad palette below, and each pad colour means one thing everywhere:
+ *
+ *     --green   healthy, positive, confirmed; the primary action; USDC in the vault
+ *     --amber   the transfer tax; pending; caution
+ *     --pink    risk, errors, anything that can lose money
+ *     --cyan    information, links, focus rings
+ *     --violet  the perp position and its leverage
+ *     --blue    redemption
+ *     --yellow  the one brand accent: the logo key (a black diamond on a yellow pad), nothing else
+ *     --white   neutral: the selected key or tab, a transfer, the platform's share
+ *
+ * - a "pad" is a rounded square lit from inside: set `--c` to a palette colour and use the pad
+ *   recipe (radial face + soft outer glow + inner hairline). The glow belongs to pads only; text,
+ *   cards and borders never glow. Text on a lit pad is `--on-pad` (black).
+ * - a "key" is a control: `--key` face, a fine light border, a small uppercase mono label.
+ *   Primary action = a lit green key. Secondary = black key, white hairline.
+ * - `--sans` for words; `--mono` (tabular) for figures, addresses, tickers, and, in small
+ *   letter-spaced capitals, for every caption and key label.
  */
 
 :root {
-  color-scheme: light dark;
-  --paper: #f3efe6;
-  --field: #faf7f0;
-  --wash: #e9e4d7;
-  --ink: #17150f;
-  --muted: #645f53;
-  --rule: #d3ccba;
-  --accent: #08693f;
-  --accent-strong: #06522f;
-  --on-accent: #f7f4ec;
-  --bad: #a3271b;
-  --scrim: rgba(23, 21, 15, 0.55);
-  --radius: 2px;
+  color-scheme: dark;
+
+  /* surfaces */
+  --slab: #0b0b0d;
+  --deck: #141417;
+  --key: #1d1d21;
+  --line: #2c2c33;
+  --key-line: #73737e;
+  --ink: #f4f4f2;
+  --muted: #a3a3ad;
+  --dim: #7d7d88;
+  --on-pad: #0b0b0d;
+  --scrim: rgb(0 0 0 / 0.74);
+
+  /* pads */
+  --amber: #ffb84d;
+  --pink: #ff5c93;
+  --cyan: #33e0e6;
+  --violet: #b78cff;
+  --green: #2fe39a;
+  --lime: #a6ea5b;
+  --yellow: #ffdf4d;
+  --blue: #4d7dff;
+  --white: #ecece8;
+
+  /* the colour a pad, chip or notice takes when nothing more specific is set */
+  --c: var(--white);
+
+  --radius: 6px;
+  --radius-deck: 12px;
   --sans: var(--font-sans), "Helvetica Neue", Arial, sans-serif;
   --mono: var(--font-mono), ui-monospace, Menlo, Consolas, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #15140f;
-    --field: #1c1a14;
-    --wash: #26231b;
-    --ink: #ece7da;
-    --muted: #a39d8d;
-    --rule: #38342a;
-    --accent: #5fd38d;
-    --accent-strong: #84e0a8;
-    --on-accent: #0c1a11;
-    --bad: #f08a7a;
-    --scrim: rgba(0, 0, 0, 0.65);
-  }
 }
 
 * {
@@ -48,17 +65,54 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  background: var(--slab);
+  scrollbar-color: #3b3b44 var(--slab);
 }
 
 body {
   margin: 0;
-  background: var(--paper);
+  background: var(--slab);
   color: var(--ink);
   font-family: var(--sans);
   font-size: 16px;
   line-height: 1.6;
   font-variant-numeric: tabular-nums;
   overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--yellow);
+  color: var(--on-pad);
+}
+
+/*
+ * The pad recipe. Anything listed here is lit in its own `--c`.
+ */
+.logo-key,
+button.primary:not(:disabled),
+fieldset.choice input:checked + span,
+.tabs button[aria-selected="true"],
+.step.done .mark,
+.badge::before,
+.notice > strong:first-child::before {
+  background: radial-gradient(
+    circle at 50% 42%,
+    color-mix(in srgb, var(--c) 55%, white) 0%,
+    var(--c) 55%,
+    color-mix(in srgb, var(--c) 78%, black) 100%
+  );
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--c) 45%, transparent),
+    inset 0 0 0 1px rgb(255 255 255 / 0.12);
+}
+
+/* a selected (white) key is lit but quiet: the face, almost no halo */
+fieldset.choice input:checked + span,
+.tabs button[aria-selected="true"] {
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--c) 22%, transparent),
+    inset 0 0 0 1px rgb(255 255 255 / 0.12);
 }
 
 main,
@@ -71,7 +125,7 @@ header.site > .inner {
 }
 
 main {
-  padding-top: 28px;
+  padding-top: 32px;
   padding-bottom: 40px;
   min-height: 60vh;
 }
@@ -91,15 +145,16 @@ h1 .ticker {
   letter-spacing: 0;
   vertical-align: middle;
 }
+/* captions: small letter-spaced mono capitals, like the print on a control surface */
 h2,
 .label {
   margin: 0;
   color: var(--ink);
-  font-family: var(--sans);
-  font-size: 0.74rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
   font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: 0.1em;
+  line-height: 1.5;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 .label {
@@ -117,12 +172,12 @@ p {
 a {
   color: inherit;
   text-decoration: underline;
-  text-decoration-color: var(--accent);
+  text-decoration-color: var(--cyan);
   text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
 }
 a:hover {
-  color: var(--accent);
+  color: var(--cyan);
 }
 strong {
   font-weight: 600;
@@ -156,8 +211,10 @@ dd {
 pre {
   margin: 8px 0 0;
   padding: 10px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
+  background: var(--slab);
+  color: var(--ink);
   overflow-x: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -175,16 +232,18 @@ small {
   font-size: 0.86rem;
   line-height: 1.55;
 }
-/* positive emphasis is the accent; caution is heavier ink; errors and risk are red */
+/* green is positive, amber is caution, pink is errors and risk */
 .good {
-  color: var(--accent);
+  --c: var(--green);
+  color: var(--green);
 }
 .warn {
-  color: var(--ink);
-  font-weight: 600;
+  --c: var(--amber);
+  color: var(--amber);
 }
 .bad {
-  color: var(--bad);
+  --c: var(--pink);
+  color: var(--pink);
 }
 .lead {
   max-width: 68ch;
@@ -199,22 +258,38 @@ small {
 /* Header and footer */
 
 header.site {
-  border-bottom: 1px solid var(--ink);
+  background: var(--deck);
+  border-bottom: 1px solid var(--line);
 }
 header.site > .inner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 22px;
+  gap: 10px 20px;
   padding-top: 12px;
   padding-bottom: 12px;
 }
+/* the logo key: a black diamond on a yellow pad. The only yellow on the site. */
+.logo-key {
+  --c: var(--yellow);
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 22%;
+}
+.logo-key svg {
+  width: 52%;
+  height: 52%;
+  fill: var(--on-pad);
+}
 .brand {
   display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
+  align-items: center;
+  gap: 10px;
   color: var(--ink);
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.045em;
@@ -223,33 +298,40 @@ header.site > .inner {
 .brand:hover {
   color: var(--ink);
 }
-.brand svg {
-  width: 0.3em;
-  height: 0.3em;
-  fill: var(--accent);
-}
 .tagline {
   color: var(--muted);
-  font-size: 0.86rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 header.site nav {
   display: flex;
   flex: 1;
-  gap: 18px;
+  gap: 8px;
 }
+/* nav items are small keys; the page you are on is the lit (white) one */
 header.site nav a {
-  padding: 6px 0;
-  border-bottom: 2px solid transparent;
-  font-size: 0.95rem;
-  font-weight: 500;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   text-decoration: none;
 }
 header.site nav a:hover {
   color: var(--ink);
-  border-bottom-color: var(--rule);
+  border-color: var(--key-line);
 }
 header.site nav a[aria-current="page"] {
-  border-bottom-color: var(--accent);
+  border-color: var(--ink);
+  box-shadow: inset 0 -2px 0 var(--ink);
 }
 
 footer.site {
@@ -262,7 +344,7 @@ footer.site > div {
   justify-content: space-between;
   gap: 4px 24px;
   padding-top: 14px;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--line);
 }
 
 /* Sections */
@@ -276,8 +358,8 @@ footer.site > div {
 
 .panel {
   margin: 36px 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--ink);
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 .panel > header {
   display: flex;
@@ -286,6 +368,16 @@ footer.site > div {
   align-items: baseline;
   gap: 4px 16px;
   margin-bottom: 12px;
+}
+/* a panel title is a caption with a small unlit pad in front of it */
+.panel > header h2::before {
+  content: "";
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-right: 0.75em;
+  border-radius: 22%;
+  background: var(--white);
 }
 .columns {
   margin: 36px 0;
@@ -297,56 +389,77 @@ footer.site > div {
   margin-bottom: 0;
 }
 
+/* Notices are small decks with a pad in front of the title: cyan informs, amber cautions, pink is an error. */
 .notice {
+  --c: var(--cyan);
   margin: 14px 0;
-  padding: 12px 14px;
-  border: 1px solid var(--rule);
-  border-left: 3px solid var(--muted);
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--c);
   border-radius: var(--radius);
+  background: var(--deck);
+  color: var(--ink);
+  font-weight: inherit;
 }
 .notice > strong:first-child {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+}
+.notice > strong:first-child::before {
+  content: "";
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 22%;
 }
 .notice > :last-child {
   margin-bottom: 0;
 }
 .notice.warn {
-  border-color: var(--ink);
-  font-weight: inherit;
+  --c: var(--amber);
 }
 .notice.bad {
-  border-color: var(--bad);
-  color: var(--ink);
-}
-.notice.bad > strong:first-child {
-  color: var(--bad);
+  --c: var(--pink);
 }
 
+/* Status chips: a tiny lit pad and a caption in the same colour. */
 .badge {
-  display: inline-block;
-  padding: 2px 7px;
-  border: 1px solid var(--rule);
+  --c: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, var(--line));
   border-radius: var(--radius);
-  color: var(--muted);
-  font-family: var(--sans);
-  font-size: 0.68rem;
+  background: var(--key);
+  color: var(--c);
+  font-family: var(--mono);
+  font-size: 0.66rem;
   font-weight: 600;
   line-height: 1.5;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
+  vertical-align: middle;
+}
+.badge::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 22%;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--c) 45%, transparent);
 }
 .badge.good {
-  border-color: var(--accent);
-  color: var(--accent);
+  --c: var(--green);
 }
 .badge.warn {
-  border-color: var(--ink);
-  color: var(--ink);
+  --c: var(--amber);
 }
 .badge.bad {
-  border-color: var(--bad);
-  color: var(--bad);
+  --c: var(--pink);
 }
 
 /* How it works */
@@ -357,22 +470,31 @@ footer.site > div {
   max-width: 68ch;
   list-style: none;
   counter-reset: model;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--line);
 }
 .model li {
   display: grid;
-  grid-template-columns: 3ch minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   gap: 14px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--rule);
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
   counter-increment: model;
 }
+/* each statement is numbered on a small key */
 .model li::before {
   content: counter(model, decimal-leading-zero);
-  color: var(--accent);
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  color: var(--ink);
   font-family: var(--mono);
-  font-size: 0.86rem;
-  line-height: 1.85;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
 /* Figures */
@@ -385,8 +507,8 @@ footer.site > div {
   justify-content: space-between;
   align-items: baseline;
   gap: 20px;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--rule);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
 }
 .rows > div:last-child {
   border-bottom: 0;
@@ -394,11 +516,12 @@ footer.site > div {
 .rows dt {
   flex: 1 1 45%;
   min-width: 0;
+  color: var(--muted);
   font-size: 0.92rem;
 }
 .rows dt small {
   display: block;
-  color: var(--muted);
+  color: var(--dim);
   font-size: 0.8rem;
   line-height: 1.45;
 }
@@ -419,15 +542,15 @@ footer.site > div {
 }
 .valuation {
   margin: 28px 0 0;
-  border-top: 1px solid var(--ink);
-  border-bottom: 1px solid var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-deck);
+  background: var(--deck);
 }
 .valuation > div {
-  padding: 14px 20px 16px;
-  border-left: 1px solid var(--rule);
+  padding: 16px 20px 18px;
+  border-left: 1px solid var(--line);
 }
 .valuation > div:first-child {
-  padding-left: 0;
   border-left: 0;
 }
 .headline {
@@ -438,8 +561,9 @@ footer.site > div {
 .headline > div > * {
   display: block;
 }
+.valuation > div > .badge,
 .headline > div > .badge {
-  display: inline-block;
+  display: inline-flex;
   margin-top: 6px;
 }
 .valuation strong,
@@ -472,7 +596,8 @@ footer.site > div {
 }
 .facts dt {
   color: var(--muted);
-  font-size: 0.74rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -486,7 +611,8 @@ footer.site > div {
 /* Wide tables scroll inside their own container, never the page. */
 .table-scroll {
   overflow-x: auto;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--line);
+  scrollbar-color: #3b3b44 transparent;
 }
 table.list {
   width: 100%;
@@ -495,21 +621,22 @@ table.list {
 }
 table.list th,
 table.list td {
-  padding: 11px 14px;
+  padding: 12px 14px;
   text-align: right;
   white-space: nowrap;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--line);
 }
 table.list tbody tr:last-child td {
   border-bottom: 0;
 }
 table.list th {
   color: var(--muted);
-  font-size: 0.7rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  border-bottom-color: var(--ink);
+  border-bottom-color: var(--key-line);
 }
 table.list td {
   font-size: 0.9rem;
@@ -527,7 +654,7 @@ table.list td:first-child {
   font-family: var(--sans);
 }
 table.list tbody tr:hover {
-  background: var(--wash);
+  background: var(--deck);
 }
 
 .events,
@@ -540,10 +667,10 @@ table.list tbody tr:hover {
 }
 .events li {
   padding: 12px 0;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--line);
 }
 .events li:first-child {
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--line);
 }
 .work li > div:last-child {
   margin-top: 8px;
@@ -559,18 +686,20 @@ table.list tbody tr:hover {
   position: relative;
   padding: 5px 0 5px 20px;
 }
+/* list markers are small pads: neutral for plain lists, pink for risks */
 .risks li::before,
 .plain li::before {
   content: "";
   position: absolute;
-  top: 1em;
+  top: 0.95em;
   left: 0;
-  width: 9px;
-  height: 1px;
-  background: var(--muted);
+  width: 7px;
+  height: 7px;
+  border-radius: 22%;
+  background: var(--dim);
 }
 .risks li::before {
-  background: var(--bad);
+  background: var(--pink);
 }
 .risks {
   max-width: 80ch;
@@ -578,7 +707,7 @@ table.list tbody tr:hover {
 
 .step {
   padding: 16px 0;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--line);
 }
 .step:first-child {
   border-top: 0;
@@ -595,29 +724,31 @@ table.list tbody tr:hover {
 .step h3 {
   flex: 1;
 }
+/* the step number sits on a key; a finished step is a lit green pad */
 .step .mark {
   display: grid;
   place-items: center;
   flex: none;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--key-line);
+  border-radius: 22%;
+  background: var(--key);
   font-family: var(--mono);
-  font-size: 0.82rem;
-  font-weight: 500;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 .step.done .mark {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
+  --c: var(--green);
+  border-color: transparent;
+  color: var(--on-pad);
 }
 .step.done .mark svg {
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 2.4;
 }
 .step ul {
   margin: 4px 0 8px;
@@ -630,8 +761,12 @@ table.list tbody tr:hover {
   padding-left: 22px;
 }
 .batch li {
-  padding: 4px 0;
-  border-bottom: 1px solid var(--rule);
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+.batch li::marker {
+  color: var(--muted);
+  font-family: var(--mono);
 }
 .batch li > span {
   display: block;
@@ -649,39 +784,44 @@ textarea {
   font-size: inherit;
   color: inherit;
 }
+/* a key: black face, fine light border, small mono capitals */
 button {
-  padding: 8px 14px;
-  border: 1px solid var(--ink);
+  padding: 9px 14px;
+  border: 1px solid var(--key-line);
   border-radius: var(--radius);
-  background: transparent;
-  font-family: var(--sans);
-  font-size: 0.92rem;
-  font-weight: 500;
-  line-height: 1.3;
+  background: var(--key);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   cursor: pointer;
 }
 button:not(:disabled):hover {
-  background: var(--wash);
+  border-color: var(--ink);
+  background: #26262b;
+}
+button:not(:disabled):active {
+  transform: translateY(1px);
 }
 button:disabled {
-  border-color: var(--rule);
-  color: var(--muted);
+  border-color: var(--line);
+  background: transparent;
+  color: var(--dim);
   cursor: not-allowed;
 }
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
+/* the primary action is the lit key */
+button.primary:not(:disabled) {
+  --c: var(--green);
+  border-color: transparent;
+  color: var(--on-pad);
+  font-weight: 700;
 }
 button.primary:not(:disabled):hover {
-  background: var(--accent-strong);
-  border-color: var(--accent-strong);
-}
-button.primary:disabled {
-  background: transparent;
-  border-color: var(--rule);
-  color: var(--muted);
+  border-color: var(--ink);
+  filter: brightness(1.08);
 }
 button.link {
   padding: 0;
@@ -689,17 +829,22 @@ button.link {
   background: none;
   color: inherit;
   font: inherit;
+  letter-spacing: inherit;
+  text-transform: none;
   text-decoration: underline;
-  text-decoration-color: var(--accent);
+  text-decoration-color: var(--cyan);
   text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
 }
 button.link:not(:disabled):hover {
   background: none;
-  color: var(--accent);
+  color: var(--cyan);
+}
+button.link:not(:disabled):active {
+  transform: none;
 }
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--cyan);
   outline-offset: 2px;
 }
 
@@ -724,10 +869,12 @@ input,
 textarea {
   display: block;
   width: 100%;
-  padding: 9px 10px;
-  border: 1px solid var(--muted);
+  padding: 10px 11px;
+  border: 1px solid var(--key-line);
   border-radius: var(--radius);
-  background: var(--field);
+  background: var(--slab);
+  color: var(--ink);
+  caret-color: var(--cyan);
   font-size: 0.95rem;
   line-height: 1.4;
 }
@@ -735,9 +882,27 @@ input:hover,
 textarea:hover {
   border-color: var(--ink);
 }
-input::placeholder {
+input:focus-visible,
+textarea:focus-visible {
+  border-color: var(--cyan);
+  outline-offset: 0;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--dim);
+  opacity: 1;
+}
+input:disabled,
+textarea:disabled {
+  border-color: var(--line);
+  background: var(--deck);
   color: var(--muted);
-  opacity: 0.7;
+  cursor: not-allowed;
+}
+/* keep browser autofill on the dark field */
+input:-webkit-autofill {
+  -webkit-text-fill-color: var(--ink);
+  box-shadow: inset 0 0 0 100px var(--slab);
 }
 .form {
   display: grid;
@@ -748,7 +913,7 @@ input::placeholder {
   grid-column: 1 / -1;
 }
 
-/* A permanent either/or choice: real radio inputs, drawn as a ruled segmented row. */
+/* A permanent either/or choice: real radio inputs, drawn as a row of keys. The chosen one is lit. */
 fieldset.choice {
   min-width: 0;
   margin: 12px 0;
@@ -777,9 +942,10 @@ fieldset.choice label > span {
   display: block;
   min-width: 72px;
   margin: 0;
-  padding: 8px 14px;
-  border: 1px solid var(--muted);
+  padding: 9px 14px;
+  border: 1px solid var(--key-line);
   border-radius: var(--radius);
+  background: var(--key);
   font-family: var(--mono);
   font-size: 0.92rem;
   font-weight: 500;
@@ -789,41 +955,42 @@ fieldset.choice label:hover > span {
   border-color: var(--ink);
 }
 fieldset.choice input:checked + span {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
+  --c: var(--white);
+  border-color: transparent;
+  color: var(--on-pad);
+  font-weight: 700;
 }
 fieldset.choice input:focus-visible + span {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--cyan);
   outline-offset: 2px;
 }
 fieldset.choice > p {
   margin: 6px 0 0;
 }
 
+/* Tabs are a row of keys; the open one is lit. */
 .tabs {
   display: flex;
-  gap: 4px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--rule);
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
 }
 .tabs button {
-  margin-bottom: -1px;
-  padding: 8px 14px 8px 0;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: none;
+  padding: 7px 12px;
+  border-color: var(--line);
   color: var(--muted);
 }
 .tabs button:not(:disabled):hover {
-  background: none;
   color: var(--ink);
+  border-color: var(--key-line);
 }
 .tabs button[aria-selected="true"] {
-  color: var(--ink);
-  border-bottom-color: var(--accent);
-  font-weight: 600;
+  --c: var(--white);
+  border-color: transparent;
+  color: var(--on-pad);
+  font-weight: 700;
 }
 
 .actions {
@@ -847,13 +1014,15 @@ fieldset.choice > p {
   width: min(600px, 100%);
   max-height: 100%;
   overflow-y: auto;
-  padding: 20px;
-  background: var(--paper);
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
+  padding: 22px;
+  background: var(--deck);
+  border: 1px solid var(--key-line);
+  border-radius: var(--radius-deck);
+  box-shadow: 0 24px 60px -12px #000;
 }
 .dialog h2 {
   margin-bottom: 4px;
+  font-family: var(--sans);
   font-size: 1.3rem;
   font-weight: 600;
   line-height: 1.25;
@@ -863,10 +1032,14 @@ fieldset.choice > p {
 .dialog .status {
   margin: 14px 0 0;
   padding-top: 12px;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--line);
 }
 .dialog .status > p:first-child {
   margin-top: 0;
+}
+/* a notice inside a dialog sits one step darker, so it still reads as a box */
+.dialog .notice {
+  background: var(--slab);
 }
 
 /* Phones */
@@ -894,9 +1067,9 @@ fieldset.choice > p {
     margin-top: 0;
   }
   .valuation > div {
-    padding: 12px 0;
+    padding: 14px 16px;
     border-left: 0;
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--line);
   }
   .valuation > div:first-child {
     border-top: 0;
@@ -916,5 +1089,11 @@ fieldset.choice > p {
   }
   .rows > div {
     gap: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):active {
+    transform: none;
   }
 }

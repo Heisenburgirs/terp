@@ -1,7 +1,8 @@
 /*
- * The landing page. Same system as globals.css (paper and ink, one accent, hairlines, flat, every
- * corner `--radius`), set larger and with more air. Everything is scoped to `.landing` and
- * `.landing-foot`, so nothing here reaches the app.
+ * The landing page. Same system as globals.css (black slab, decks, keys, pads; colour meanings as
+ * documented there), set larger and with more air. The hero is the device itself: a CSS grid of
+ * 64 pads with stage keys along the top and scene keys down the right. Everything is scoped to
+ * `.landing`, `.landing-top` and `.landing-foot`, so nothing here reaches the app.
  */
 
 main.landing {
@@ -11,112 +12,329 @@ main.landing {
 }
 
 .landing .wrap,
+.landing-top .wrap,
 .landing-foot .wrap {
   max-width: 1120px;
   margin: 0 auto;
   padding: 0 24px;
 }
 
+/* one pad colour per stage or meaning; anything inside takes it through `--c` */
+.landing .amber {
+  --c: var(--amber);
+}
+.landing .green {
+  --c: var(--green);
+}
+.landing .violet {
+  --c: var(--violet);
+}
+.landing .blue {
+  --c: var(--blue);
+}
+.landing .white {
+  --c: var(--white);
+}
+
+/* The pad recipe (see globals.css), for everything on this page that is lit. */
+.landing .device .pad.lit::after,
+.landing .stage-key::before,
+.landing .flow .pad,
+.landing .split > span,
+.landing .label::before,
+.landing .legend li::before,
+.landing .status-key::before,
+.landing .points h3::before,
+.landing .risk-list li::before,
+.landing .money dt::before,
+.landing .split-key dt::before {
+  background: radial-gradient(
+    circle at 50% 42%,
+    color-mix(in srgb, var(--c) 55%, white) 0%,
+    var(--c) 55%,
+    color-mix(in srgb, var(--c) 78%, black) 100%
+  );
+  box-shadow:
+    0 0 var(--glow, 18px) color-mix(in srgb, var(--c) 45%, transparent),
+    inset 0 0 0 1px rgb(255 255 255 / 0.12);
+}
+
+/* Top strip: the logo key and in-page keys */
+
+.landing-top {
+  border-bottom: 1px solid var(--line);
+  background: var(--deck);
+}
+.landing-top .wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.landing-top nav {
+  display: flex;
+  gap: 8px;
+}
+.landing-top nav a,
+.landing .jump a {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.landing-top nav a:hover,
+.landing .jump a:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
 /* Hero */
 
 .landing .hero {
-  padding: clamp(56px, 13vh, 150px) 0 clamp(64px, 11vh, 128px);
+  padding: clamp(40px, 8vh, 96px) 0 clamp(56px, 9vh, 112px);
 }
-.landing .chip {
+.landing .hero .wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
+  gap: clamp(32px, 6vw, 80px);
+  align-items: center;
+}
+/* a status key: black, hairline, an amber pad for "pending" */
+.landing .status-key {
+  --c: var(--amber);
+  --glow: 8px;
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  margin: 0 0 clamp(28px, 6vh, 56px);
-  padding: 5px 11px;
-  border: 1px solid var(--ink);
+  gap: 10px;
+  margin: 0 0 clamp(22px, 4vh, 40px);
+  padding: 7px 12px;
+  border: 1px solid var(--key-line);
   border-radius: var(--radius);
+  background: var(--key);
   font-family: var(--mono);
-  font-size: 0.72rem;
-  font-weight: 500;
+  font-size: 0.7rem;
+  font-weight: 600;
   line-height: 1.5;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
-.landing .chip-dot {
-  width: 7px;
-  height: 7px;
-  border: 1.5px solid var(--ink);
-  border-radius: 50%;
+.landing .status-key::before {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 22%;
 }
 .landing h1 {
-  display: flex;
-  align-items: baseline;
-  gap: 0.035em;
-  margin: 0 0 clamp(24px, 4vw, 44px) -0.05em;
-  font-size: clamp(5.5rem, 24vw, 14rem);
+  margin: 0 0 clamp(18px, 3vw, 30px) -0.04em;
+  font-size: clamp(4.6rem, 13vw, 9rem);
   font-weight: 700;
-  line-height: 0.82;
-  letter-spacing: -0.065em;
+  line-height: 0.84;
+  letter-spacing: -0.06em;
   text-transform: lowercase;
 }
-.landing h1 svg {
-  flex: none;
-  width: 0.2em;
-  height: 0.2em;
-  fill: var(--accent);
-}
 .landing .idea {
-  max-width: 27ch;
-  margin: 0 0 20px;
-  font-size: clamp(1.4rem, 3.4vw, 2.35rem);
+  max-width: 24ch;
+  margin: 0 0 18px;
+  font-size: clamp(1.35rem, 2.7vw, 2rem);
   font-weight: 500;
   line-height: 1.16;
   letter-spacing: -0.02em;
   text-wrap: balance;
 }
 .landing .sub {
-  max-width: 54ch;
-  margin: 0 0 32px;
+  max-width: 52ch;
+  margin: 0 0 28px;
   color: var(--muted);
-  font-size: 1.06rem;
+  font-size: 1.04rem;
 }
 .landing .jump {
   margin: 0;
-  font-size: 0.95rem;
-  font-weight: 500;
 }
-.landing .jump a::after {
-  content: "↓";
-  display: inline-block;
-  margin-left: 8px;
-  color: var(--accent);
+.landing .jump a {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-color: var(--key-line);
+}
+.landing .jump svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+/* The device */
+
+.landing .device-wrap {
+  min-width: 0;
+}
+.landing .device {
+  --gap: clamp(4px, 1.15vw, 9px);
+  --glow: clamp(7px, 1.8vw, 16px);
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr)) minmax(0, 0.7fr);
+  gap: var(--gap);
+  padding: clamp(11px, 3vw, 22px);
+  border: 1px solid #2e2e35;
+  border-radius: clamp(14px, 3.4vw, 26px);
+  background: #131316;
+  /* a lit top edge, the thickness of the slab, and its shadow on the table */
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 5px 0 #050506,
+    0 44px 60px -34px #000;
+}
+.landing .pad-row {
+  display: contents;
+}
+.landing .device .pad {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 22%;
+  background: #1e1e23;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+}
+.landing .device .pad.lit::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+/* control keys: black, a fine light border, a small white label or glyph */
+.landing .stage-key,
+.landing .side-key {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  border: 1px solid var(--key-line);
+  border-radius: clamp(4px, 0.9vw, 7px);
+  background: #0c0c0e;
+}
+.landing .stage-key {
+  grid-column: span 2;
+  aspect-ratio: 11 / 4;
+  overflow: hidden;
+  color: var(--on-pad);
+  font-family: var(--mono);
+  font-size: clamp(0.55rem, 1.9vw, 0.72rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.landing .stage-key::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: none;
+}
+/* when a stage key is not lit, a strip in its colour still says which stage it is */
+.landing .stage-key::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--c);
+}
+.landing .stage-key > span {
+  position: relative;
+}
+.landing .side-key svg {
+  width: 46%;
+  max-width: 14px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.3;
+}
+.landing .device .logo-key {
+  width: auto;
+  height: auto;
+  border-radius: clamp(4px, 0.9vw, 7px);
+}
+.landing .device .logo-key svg {
+  width: 46%;
+  height: auto;
+  max-width: 16px;
+}
+
+.landing .legend {
+  --glow: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 22px 0 0;
+  padding: 0 4px;
+  list-style: none;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.landing .legend li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.landing .legend li::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 22%;
 }
 
 /* Sections */
 
-.landing .block,
-.landing .band {
-  padding: clamp(64px, 10vw, 120px) 0;
-}
-.landing .band {
-  background: var(--field);
-  border-top: 1px solid var(--ink);
-  border-bottom: 1px solid var(--ink);
-  scroll-margin-top: 0;
-}
-.landing .ruled {
-  padding-top: 0;
-}
-.landing .ruled > .wrap::before {
-  content: "";
-  display: block;
-  margin-bottom: clamp(64px, 10vw, 120px);
-  border-top: 1px solid var(--rule);
+.landing .block {
+  padding: clamp(52px, 8vw, 96px) 0;
+  border-top: 1px solid var(--line);
 }
 .landing .label {
-  margin: 0 0 14px;
-  font-family: var(--mono);
-  font-weight: 500;
+  --glow: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+.landing .label::before {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 22%;
+}
+.landing #nobody-runs-it {
+  --c: var(--cyan);
+}
+.landing #money {
+  --c: var(--green);
+}
+.landing .risk {
+  --c: var(--pink);
 }
 .landing h2 {
-  max-width: 20ch;
-  margin: 0 0 clamp(36px, 6vw, 64px);
-  font-size: clamp(1.75rem, 4.4vw, 2.9rem);
+  max-width: 22ch;
+  margin: 0 0 clamp(30px, 5vw, 52px);
+  font-family: var(--sans);
+  font-size: clamp(1.75rem, 4.2vw, 2.8rem);
   font-weight: 600;
   line-height: 1.08;
   letter-spacing: -0.028em;
@@ -128,177 +346,181 @@ main.landing {
   letter-spacing: -0.01em;
 }
 
-/* The flow: four nodes on one track. Horizontal when there is room, vertical otherwise. */
+/* the decks */
+.landing .flow > li,
+.landing .points > li,
+.landing .money > div,
+.landing .split-deck,
+.landing .risk-list {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-deck);
+  background: var(--deck);
+}
+
+/* The four steps: one deck each, with the step's pad */
 
 .landing .flow {
-  position: relative;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.landing .flow li {
-  position: relative;
-  padding-right: 32px;
+.landing .flow > li {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 20px 18px;
 }
-/* the track */
-.landing .flow li::before {
-  content: "";
-  position: absolute;
-  top: 21px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--ink);
+.landing .step-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
 }
-.landing .flow li:last-child::before {
-  right: 13px;
-}
-/* direction: a chevron where each segment ends */
-.landing .flow li::after {
-  content: "";
-  position: absolute;
-  top: 17px;
-  right: 13px;
-  width: 9px;
-  height: 9px;
-  border-top: 1px solid var(--ink);
-  border-right: 1px solid var(--ink);
-  transform: rotate(45deg);
-}
-.landing .node {
-  position: relative;
-  z-index: 1;
+.landing .flow .pad {
+  --glow: 16px;
   display: grid;
   place-items: center;
-  width: 43px;
-  height: 43px;
-  border-radius: var(--radius);
-  background: var(--accent);
-  color: var(--on-accent);
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 22%;
+  color: var(--on-pad);
   font-family: var(--mono);
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-.landing .step-body {
-  margin-top: 30px;
-}
-.landing .glyph {
-  display: block;
-  width: 48px;
-  height: 48px;
-  margin-bottom: 18px;
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 1.5;
-  stroke-linecap: square;
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 .landing .flow h3 {
-  margin-bottom: 8px;
-  font-size: clamp(1.5rem, 2.6vw, 1.9rem);
-  line-height: 1.1;
-  letter-spacing: -0.025em;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 .landing .flow p {
   margin: 0;
   color: var(--muted);
-  font-size: 0.98rem;
+  font-size: 0.97rem;
+}
+.landing .flow p strong {
+  color: var(--ink);
 }
 .landing .flow .tag {
-  display: inline-block;
-  margin-top: 16px;
-  padding-top: 8px;
-  border-top: 1px solid var(--accent);
+  margin-top: auto;
+  padding-top: 18px;
   color: var(--ink);
   font-family: var(--mono);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   line-height: 1.5;
 }
-.landing .loop {
-  margin: clamp(32px, 5vw, 52px) 0 0;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 0.8rem;
-}
-.landing .loop::before {
-  content: "↻";
-  margin-right: 8px;
-  color: var(--accent);
+.landing .flow .tag::before {
+  content: "";
+  display: block;
+  width: 28px;
+  height: 3px;
+  margin-bottom: 10px;
+  background: var(--c);
 }
 
-/* Points: what makes it different, and the risks */
+/* Points: nobody runs it */
 
 .landing .points {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 56px;
+  gap: 14px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.landing .points li {
-  padding: 22px 0 30px;
-  border-top: 1px solid var(--ink);
+.landing .points > li {
+  padding: 22px 22px 24px;
 }
 .landing .points h3 {
+  --glow: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 8px;
 }
+.landing .points h3::before {
+  content: "";
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 22%;
+}
 .landing .points p {
-  max-width: 52ch;
+  max-width: 54ch;
   margin: 0;
   color: var(--muted);
 }
 
-/* Money */
+/* Money: 100 pads, 97 for the vault and 3 for the platform */
 
-.landing .split {
-  display: flex;
-  height: 60px;
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.landing .to-vault {
-  flex: 97;
-  display: flex;
+.landing .split-deck {
+  display: grid;
+  grid-template-columns: minmax(0, 520px) minmax(0, 1fr);
+  gap: clamp(24px, 5vw, 56px);
   align-items: center;
-  padding: 0 16px;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-family: var(--mono);
-  font-size: 1.25rem;
-  font-weight: 500;
+  padding: clamp(16px, 3vw, 26px);
 }
-.landing .to-platform {
-  flex: 3;
-  background: var(--ink);
+.landing .split {
+  --glow: 5px;
+  display: grid;
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+  gap: clamp(2px, 0.6vw, 5px);
+}
+.landing .split > span {
+  aspect-ratio: 1;
+  border-radius: 22%;
 }
 .landing .split-key {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 8px;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 0.78rem;
+  display: grid;
+  gap: 18px;
+  margin: 0;
 }
-.landing .split-key span:last-child {
-  text-align: right;
+.landing .split-key dt {
+  --glow: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+.landing .split-key dt::before,
+.landing .money dt::before {
+  content: "";
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 22%;
+}
+.landing .split-key dd {
+  margin: 4px 0 0 23px;
+  color: var(--muted);
+  font-family: var(--sans);
 }
 .landing .money {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0 40px;
-  margin: clamp(36px, 6vw, 60px) 0 0;
+  gap: 14px;
+  margin: 14px 0 0;
 }
 .landing .money > div {
-  padding-top: 16px;
-  border-top: 1px solid var(--ink);
+  padding: 20px 20px 22px;
 }
 .landing .money dt {
+  --glow: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   color: var(--muted);
-  font-size: 0.74rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -310,7 +532,7 @@ main.landing {
   overflow-wrap: break-word;
 }
 .landing .money dd.figure {
-  margin: 10px 0 12px;
+  margin: 12px 0 10px;
   color: var(--ink);
   font-family: var(--mono);
   font-size: clamp(1.3rem, 2.4vw, 1.7rem);
@@ -319,36 +541,47 @@ main.landing {
   letter-spacing: -0.03em;
 }
 
-/* Risks: the one place the page uses red */
+/* Risks: pink, full size, on its own deck */
 
-.landing .risk {
-  border-top: 1px solid var(--ink);
-}
 .landing .risk .label {
-  color: var(--bad);
+  color: var(--pink);
 }
-.landing .risk .points li {
+.landing .risk-list {
+  margin: 0;
+  padding: 4px clamp(16px, 3vw, 28px);
+  border-color: color-mix(in srgb, var(--pink) 55%, var(--line));
+  list-style: none;
+}
+.landing .risk-list li {
+  --glow: 8px;
   position: relative;
-  padding-left: 22px;
-  border-top-color: var(--rule);
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 6px 32px;
+  padding: 20px 0 20px 28px;
+  border-top: 1px solid var(--line);
 }
-.landing .risk .points li::before {
+.landing .risk-list li:first-child {
+  border-top: 0;
+}
+.landing .risk-list li::before {
   content: "";
   position: absolute;
-  top: 22px;
-  bottom: 30px;
+  top: 26px;
   left: 0;
-  width: 2px;
-  background: var(--bad);
+  width: 11px;
+  height: 11px;
+  border-radius: 22%;
 }
-.landing .risk .points p {
+.landing .risk-list p {
+  margin: 0;
   color: var(--ink);
 }
 
 /* Footer */
 
 .landing-foot {
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--line);
   padding: 28px 0 44px;
   font-size: 0.9rem;
 }
@@ -364,147 +597,205 @@ main.landing {
 .landing-foot .stack {
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 0.78rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
   line-height: 1.9;
+  text-transform: uppercase;
 }
 
-/* Narrow: the track turns vertical */
+/* Narrower: the device goes above the words, decks fold to two columns, then one */
 
-@media (max-width: 900px) {
+@media (max-width: 980px) {
   .landing .flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .landing .hero .wrap {
     grid-template-columns: minmax(0, 1fr);
-    max-width: 620px;
   }
-  .landing .flow li {
-    display: grid;
-    grid-template-columns: 43px minmax(0, 1fr);
-    column-gap: 22px;
-    padding: 0 0 48px;
+  .landing .device-wrap {
+    order: -1;
+    width: 100%;
+    max-width: 480px;
   }
-  .landing .flow li:last-child {
-    padding-bottom: 20px;
-  }
-  .landing .flow li::before,
-  .landing .flow li:last-child::before {
-    top: 0;
-    bottom: 0;
-    left: 21px;
-    right: auto;
-    width: 1px;
-    height: auto;
-  }
-  .landing .flow li::after {
-    top: auto;
-    right: auto;
-    bottom: 2px;
-    left: 17px;
-    transform: rotate(135deg);
-  }
-  .landing .step-body {
-    margin-top: 4px;
-  }
-  .landing .glyph {
-    width: 40px;
-    height: 40px;
-    margin-bottom: 12px;
-  }
-  .landing .loop {
-    margin-top: 20px;
+  .landing .split-deck {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 760px) {
   .landing .wrap,
+  .landing-top .wrap,
   .landing-foot .wrap {
-    padding: 0 18px;
+    padding-left: 18px;
+    padding-right: 18px;
   }
   .landing .points,
   .landing .money {
     grid-template-columns: minmax(0, 1fr);
   }
-  .landing .money > div {
-    padding-bottom: 26px;
-  }
-  .landing .money > div:last-child {
-    padding-bottom: 0;
+  .landing .risk-list li {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
-/* Motion: an entrance for the hero and a marker that walks the track. Off when the reader asks. */
+@media (max-width: 620px) {
+  .landing-top nav {
+    display: none;
+  }
+  .landing .flow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .landing .hero {
+    padding-top: 28px;
+  }
+}
+
+/*
+ * Motion. Without it the board is simply lit: every pad on, all four stage keys in their colours.
+ * With it, one 20s loop walks the board left to right, and the stage key above lights in step:
+ *
+ *    0 - 21%  TRADE   white pads blink (transfers); the amber stack grows (tax held back)
+ *   21 - 42%  FUND    the amber is sold off; the green stack grows (USDC in the vault)
+ *   42 - 63%  LEVER   the violet block grows row by row (the position)
+ *   63 - 84%  REDEEM  the blue pads light (a redemption)
+ *   86 - 99%  everything but the transfers goes dark, then it starts again
+ *
+ * `--n` staggers the pads of a group; `--s` is the stage index of a key.
+ */
 
 @media (prefers-reduced-motion: no-preference) {
   html:has(.landing) {
     scroll-behavior: smooth;
   }
-  .landing .hero .wrap > * {
-    animation: landing-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+
+  .landing .device .pad.lit::after {
+    animation: 20s linear infinite backwards;
+    animation-delay: calc(var(--n, 0) * var(--stagger, 0.3s));
   }
-  .landing .hero .wrap > :nth-child(2) {
-    animation-delay: 0.06s;
+  .landing .device .pad.amber::after {
+    animation-name: landing-pad-amber;
   }
-  .landing .hero .wrap > :nth-child(3) {
-    animation-delay: 0.14s;
+  .landing .device .pad.green::after {
+    animation-name: landing-pad-green;
   }
-  .landing .hero .wrap > :nth-child(4) {
-    animation-delay: 0.2s;
+  .landing .device .pad.violet::after {
+    --stagger: 0.45s;
+    animation-name: landing-pad-violet;
   }
-  .landing .hero .wrap > :nth-child(5) {
-    animation-delay: 0.26s;
+  .landing .device .pad.blue::after {
+    --stagger: 0.8s;
+    animation-name: landing-pad-blue;
   }
-  .landing .flow::after {
-    content: "";
-    position: absolute;
-    top: 18px;
-    left: 0;
-    width: 7px;
-    height: 7px;
-    background: var(--accent);
-    animation: landing-walk-x 9s linear infinite;
+  .landing .device .pad.white::after {
+    --stagger: 1s;
+    animation-name: landing-pad-white;
+    animation-duration: 5s;
   }
-  @media (max-width: 900px) {
-    .landing .flow::after {
-      top: 0;
-      left: 18px;
-      animation-name: landing-walk-y;
-    }
+
+  .landing .stage-key {
+    animation: landing-key-ink 20s linear infinite backwards;
+    animation-delay: calc(var(--s) * 4.2s);
+  }
+  .landing .stage-key::before {
+    animation: landing-key-lit 20s linear infinite backwards;
+    animation-delay: calc(var(--s) * 4.2s);
   }
 }
 
-@keyframes landing-rise {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes landing-walk-x {
+@keyframes landing-pad-amber {
   0% {
-    left: 0;
     opacity: 0;
   }
-  6%,
-  94% {
+  1.5%,
+  22% {
     opacity: 1;
   }
+  26%,
   100% {
-    left: calc(100% - 20px);
     opacity: 0;
   }
 }
-@keyframes landing-walk-y {
-  0% {
-    top: 0;
+@keyframes landing-pad-green {
+  0%,
+  22% {
     opacity: 0;
   }
-  6%,
-  94% {
+  24%,
+  86% {
     opacity: 1;
   }
+  89%,
   100% {
-    top: calc(100% - 20px);
     opacity: 0;
+  }
+}
+@keyframes landing-pad-violet {
+  0%,
+  43% {
+    opacity: 0;
+  }
+  45%,
+  86% {
+    opacity: 1;
+  }
+  89%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes landing-pad-blue {
+  0%,
+  64% {
+    opacity: 0;
+  }
+  66%,
+  86% {
+    opacity: 1;
+  }
+  89%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes landing-pad-white {
+  0% {
+    opacity: 0.22;
+  }
+  6%,
+  36% {
+    opacity: 1;
+  }
+  60%,
+  100% {
+    opacity: 0.22;
+  }
+}
+@keyframes landing-key-lit {
+  0% {
+    opacity: 0;
+  }
+  1.5%,
+  20% {
+    opacity: 1;
+  }
+  22%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes landing-key-ink {
+  0% {
+    color: var(--ink);
+  }
+  1.5%,
+  20% {
+    color: var(--on-pad);
+  }
+  22%,
+  100% {
+    color: var(--ink);
   }
 }

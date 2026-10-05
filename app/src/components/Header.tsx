@@ -12,14 +12,16 @@ const WalletMultiButton = dynamic(
   { ssr: false },
 );
 
-/** The wordmark: lowercase "terp" set in the display face, closed by a dot in the accent colour. */
+/** The logo key (a black diamond on a yellow pad) followed by lowercase "terp" in the display face. */
 export function Wordmark() {
   return (
     <Link href="/" className="brand" aria-label={`${BRAND} home`}>
+      <span className="logo-key" aria-hidden="true">
+        <svg viewBox="0 0 10 10" focusable="false">
+          <path d="M5 0.6 9.4 5 5 9.4 0.6 5Z" />
+        </svg>
+      </span>
       <span>terp</span>
-      <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
-        <circle cx="5" cy="5" r="5" />
-      </svg>
     </Link>
   );
 }

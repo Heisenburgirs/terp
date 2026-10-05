@@ -1,88 +1,77 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import "./landing.css";
 
 const DESCRIPTION =
-  "Terp is a token launchpad in development. Every token's transfer tax funds a leveraged perp position " +
-  "held by that token's own on-chain vault, and holders can burn tokens to redeem their share of it. Not live.";
+  "Terp is a token launchpad in development. Each token's transfer tax is sold for USDC and funds a leveraged " +
+  "perp long held by that token's own on-chain vault. The token's own transfers keep the position maintained, " +
+  "with no keeper and no operator key, and holders can burn tokens to redeem their share. Not live.";
 
 export const metadata: Metadata = {
-  title: { absolute: "Terp — transfer tax that funds a perp position" },
+  title: { absolute: "Terp — a transfer tax that funds a perp position nobody runs" },
   description: DESCRIPTION,
 };
 
-/** Small line drawings for the four steps. Decorative: the step names carry the meaning. */
-function Glyph({ children }: { children: ReactNode }) {
-  return (
-    <svg className="glyph" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      {children}
-    </svg>
-  );
-}
-
-const STEPS: { name: string; text: string; tag: string; glyph: ReactNode }[] = [
+/** The four stages. Each has one pad colour, used for its key on the device and its deck below. */
+const STEPS: { name: string; tone: string; text: ReactNode; tag: string }[] = [
   {
     name: "Trade",
-    text: "Every transfer of a Terp token pays a small tax: 1% or 3%, fixed forever when the token is created.",
-    tag: "1% or 3% per transfer",
-    glyph: (
+    tone: "amber",
+    text: (
       <>
-        <path d="M8 17h31M32 10l7 7-7 7" />
-        <path d="M40 31H9M16 24l-7 7 7 7" />
+        Every transfer of a Terp token pays a small tax: 1% or 3%, fixed forever when the token is created. The token
+        itself holds it back; nobody collects it by hand.
       </>
     ),
+    tag: "1% or 3% per transfer",
   },
   {
     name: "Fund",
-    text: "The tax is sold for USDC and goes to that token's own on-chain vault. No creator or operator account sits in the middle.",
-    tag: "tax → USDC → vault",
-    glyph: (
+    tone: "green",
+    text: (
       <>
-        <path d="M24 5v22M17 20l7 7 7-7" />
-        <path d="M15 22H9v20h30V22h-6" />
+        The tax is sold for USDC and goes to that token&apos;s own on-chain vault. No creator or operator account sits
+        in the middle.
       </>
     ),
+    tag: "tax → USDC → vault",
   },
   {
     name: "Lever",
-    text: "The vault holds a perpetual long on SOL, BTC or another listed asset on Phoenix, kept close to 5x. Tax adds margin, and the position is topped up or trimmed to stay in its band.",
-    tag: "perp long · close to 5x",
-    glyph: (
+    tone: "violet",
+    text: (
       <>
-        <path d="M5 12h38M5 36h38" strokeDasharray="3 4" />
-        <path d="M6 31l10-8 8 5 10-11 8 3" />
+        The vault holds a perpetual long (SOL, BTC or another listed asset) on Phoenix, kept close to 5x.{" "}
+        <strong>The token&apos;s own transfers do the upkeep</strong>: each transfer calls the vault, which checks the
+        position and opens, tops up or trims it when its rules say so, and does nothing otherwise.
       </>
     ),
+    tag: "perp long · close to 5x",
   },
   {
     name: "Redeem",
-    text: "Burn tokens at any time to take your pro-rata share of the vault's equity in USDC.",
+    tone: "blue",
+    text: <>Burn tokens at any time to take your pro-rata share of the vault&apos;s equity in USDC.</>,
     tag: "burn → USDC, pro rata",
-    glyph: (
-      <>
-        <circle cx="15" cy="24" r="9" />
-        <path d="M28 24h14M35 17l7 7-7 7" />
-      </>
-    ),
   },
 ];
 
-const DIFFERENCES: { title: string; text: string }[] = [
+const NOBODY: { title: string; text: string }[] = [
+  {
+    title: "No keeper, no operator key",
+    text: "The token's transfers maintain the position. The one step a transfer cannot do, swapping collected tax to USDC, rides along with ordinary trades and can be triggered by anyone.",
+  },
   {
     title: "One vault per token",
-    text: "Each token has its own vault, and its tax can only go there. Not to the creator, not to the operator, not to another token.",
+    text: "Each token has its own vault, and its tax can only go there.",
   },
   {
-    title: "Liquidity that launches locked",
-    text: "Each token starts with a tokens-only pool on Meteora DLMM. The liquidity positions are owned by the vault, not by the creator.",
+    title: "Liquidity launches locked",
+    text: "Each token starts with a tokens-only pool on Meteora DLMM. The liquidity positions are owned by the vault.",
   },
   {
-    title: "Rules enforced by the program",
-    text: "No operator runs the market and no key triggers it. The steps that sell tax and adjust the position are open to anyone, and the program fixes every amount, price and destination. Whoever sends one receives nothing.",
-  },
-  {
-    title: "Trades maintain the position",
-    text: "The token takes its tax itself on every transfer, using Token-2022's transfer fee. Every trade made on Terp also carries the steps that sell collected tax and keep the position in its band, so trading is what runs the market. Anyone can send the same steps. Still in development.",
+    title: "The program sets the terms",
+    text: "Every amount, price and destination is set by the program, never by whoever triggers a step.",
   },
 ];
 
@@ -103,67 +92,192 @@ const RISKS: { title: string; text: string }[] = [
     title: "Depends on Phoenix and Meteora",
     text: "The position lives on Phoenix and the pool on Meteora. A failure or change in either can affect the vault.",
   },
+  {
+    title: "Pools need Meteora's approval",
+    text: "Tokens that use the transfer-driven upkeep need Meteora to approve them before they can have a pool.",
+  },
 ];
+
+/*
+ * The hero board, 8 by 8, top row first. Two columns per stage, left to right, under that stage's key:
+ *   w  a transfer (white)            columns 1-2  TRADE
+ *   a  tax held back (amber)
+ *   g  USDC in the vault (green)     columns 3-4  FUND
+ *   v  the position (violet)         columns 5-6  LEVER
+ *   b  a redemption (blue)           columns 7-8  REDEEM
+ *   .  an unlit pad
+ * landing.css lights each group in turn; without motion the whole arrangement is simply lit.
+ */
+const BOARD = [
+  "........",
+  "w.......",
+  ".a......",
+  "wa..vv..",
+  "wa..vv..",
+  ".aggvv..",
+  "waggvvb.",
+  "waggvvbb",
+];
+const PAD_CLASS: Record<string, string> = { w: "white", a: "amber", g: "green", v: "violet", b: "blue" };
+
+/** The white pads blink out of step, like transfers arriving: board row -> place in the order. */
+const WHITE_ORDER: Record<number, number> = { 1: 0, 3: 3, 4: 1, 6: 4, 7: 2 };
+
+/** Where a pad falls in its group's lighting order: stacks fill from the bottom row up. */
+function padOrder(kind: string, row: number, col: number): number {
+  const fromBottom = BOARD.length - 1 - row;
+  if (kind === "g") return fromBottom * 2 + (col - 2);
+  if (kind === "b") return row === 7 ? col - 6 : 2;
+  if (kind === "w") return WHITE_ORDER[row] ?? 0;
+  return fromBottom;
+}
+
+function Diamond() {
+  return (
+    <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+      <path d="M5 0.6 9.4 5 5 9.4 0.6 5Z" />
+    </svg>
+  );
+}
+
+/** The device: a slab, four stage keys along the top, eight scene keys down the right, 64 pads. */
+function Device() {
+  return (
+    <div className="device-wrap">
+      <div
+        className="device"
+        role="img"
+        aria-label="A grid controller showing the flow from left to right: transfers and the tax they pay, the tax becoming USDC in the vault, the leveraged position growing, and a redemption."
+      >
+        {STEPS.map((step, index) => (
+          <span key={step.name} className={`stage-key ${step.tone}`} style={{ "--s": index } as CSSProperties}>
+            <span>{step.name}</span>
+          </span>
+        ))}
+        <span className="logo-key">
+          <Diamond />
+        </span>
+        {BOARD.map((line, row) => (
+          <span className="pad-row" key={row}>
+            {[...line].map((kind, col) =>
+              kind === "." ? (
+                <span className="pad" key={col} />
+              ) : (
+                <span
+                  className={`pad lit ${PAD_CLASS[kind]}`}
+                  key={col}
+                  style={{ "--n": padOrder(kind, row, col) } as CSSProperties}
+                />
+              ),
+            )}
+            <span className="side-key">
+              <svg viewBox="0 0 10 10" focusable="false">
+                <path d="M3.5 2 6.8 5 3.5 8" />
+              </svg>
+            </span>
+          </span>
+        ))}
+      </div>
+      <ul className="legend" aria-label="What the pad colours mean">
+        <li className="white">transfer</li>
+        <li className="amber">tax</li>
+        <li className="green">USDC in vault</li>
+        <li className="violet">position</li>
+        <li className="blue">redemption</li>
+      </ul>
+    </div>
+  );
+}
+
+/** 100 small pads: 97 lit green for the vault, 3 white for the platform. */
+function Split() {
+  return (
+    <div
+      className="split"
+      role="img"
+      aria-label="Of each tax sale, 97% goes to the token's vault and 3% to the platform."
+    >
+      {Array.from({ length: 100 }, (_, index) => (
+        <span key={index} className={index < 97 ? "green" : "white"} />
+      ))}
+    </div>
+  );
+}
 
 export default function LandingPage() {
   return (
     <>
+      <header className="landing-top">
+        <div className="wrap">
+          <a className="brand" href="#terp" aria-label="Terp, top of page">
+            <span className="logo-key" aria-hidden="true">
+              <Diamond />
+            </span>
+            <span>terp</span>
+          </a>
+          <nav aria-label="On this page">
+            <a href="#how-it-works">Steps</a>
+            <a href="#nobody-runs-it">Upkeep</a>
+            <a href="#money">Money</a>
+            <a href="#risks">Risks</a>
+          </nav>
+        </div>
+      </header>
+
       <main className="landing">
         <section className="hero" aria-labelledby="terp">
           <div className="wrap">
-            <p className="chip">
-              <span className="chip-dot" aria-hidden="true" />
-              In development · not live
-            </p>
-            <h1 id="terp">
-              Terp
-              <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
-                <circle cx="5" cy="5" r="5" />
-              </svg>
-            </h1>
-            <p className="idea">
-              A token launchpad where every token&apos;s transfer tax funds a leveraged perp position that its holders
-              own.
-            </p>
-            <p className="sub">
-              The tax goes to a vault that belongs to the token, not to a creator or an operator. Holders can burn
-              their tokens for a share of it at any time.
-            </p>
-            <p className="jump">
-              <a href="#how-it-works">How it works</a>
-            </p>
+            <div className="hero-text">
+              <p className="status-key">In development · not live</p>
+              <h1 id="terp">Terp</h1>
+              <p className="idea">
+                A token launchpad where every transfer funds a leveraged position, and keeps it running.
+              </p>
+              <p className="sub">
+                Each token&apos;s transfer tax goes to a vault that belongs to the token, not to a creator or an
+                operator. The vault holds a perp long, the token&apos;s own transfers do the upkeep, and holders can
+                burn their tokens for a share of it at any time.
+              </p>
+              <p className="jump">
+                <a href="#how-it-works">
+                  How it works
+                  <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+                    <path d="M2 3.5 5 6.8 8 3.5" />
+                  </svg>
+                </a>
+              </p>
+            </div>
+            <Device />
           </div>
         </section>
 
-        <section className="band" id="how-it-works" aria-labelledby="how-title">
+        <section className="block" id="how-it-works" aria-labelledby="how-title">
           <div className="wrap">
-            <p className="label">How it works</p>
-            <h2 id="how-title">Four steps, repeated with every trade.</h2>
+            <p className="label">The idea in four steps</p>
+            <h2 id="how-title">Four steps, repeated with every transfer.</h2>
             <ol className="flow">
               {STEPS.map((step, index) => (
-                <li key={step.name}>
-                  <span className="node" aria-hidden="true">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <div className="step-body">
-                    <Glyph>{step.glyph}</Glyph>
+                <li key={step.name} className={step.tone}>
+                  <div className="step-head">
+                    <span className="pad" aria-hidden="true">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
                     <h3>{step.name}</h3>
-                    <p>{step.text}</p>
-                    <p className="tag">{step.tag}</p>
                   </div>
+                  <p>{step.text}</p>
+                  <p className="tag">{step.tag}</p>
                 </li>
               ))}
             </ol>
-            <p className="loop">The next trade starts it again.</p>
           </div>
         </section>
 
-        <section className="block" aria-labelledby="different-title">
+        <section className="block" id="nobody-runs-it" aria-labelledby="nobody-title">
           <div className="wrap">
-            <p className="label">What makes it different</p>
-            <h2 id="different-title">Built so the tax has one place to go.</h2>
+            <p className="label">Nobody runs it</p>
+            <h2 id="nobody-title">No keeper. No operator key. The token does the work.</h2>
             <ul className="points">
-              {DIFFERENCES.map((point) => (
+              {NOBODY.map((point) => (
                 <li key={point.title}>
                   <h3>{point.title}</h3>
                   <p>{point.text}</p>
@@ -173,25 +287,30 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="block ruled" aria-labelledby="money-title">
+        <section className="block" id="money" aria-labelledby="money-title">
           <div className="wrap">
             <p className="label">How the money moves</p>
             <h2 id="money-title">Where the tax goes, and what comes back.</h2>
-            <div className="split" role="img" aria-label="Of each tax sale, 97% goes to the token's vault and 3% to the platform.">
-              <span className="to-vault">97%</span>
-              <span className="to-platform" />
-            </div>
-            <div className="split-key" aria-hidden="true">
-              <span>to the token&apos;s vault</span>
-              <span>3% to the platform</span>
+            <div className="split-deck">
+              <Split />
+              <dl className="split-key">
+                <div className="green">
+                  <dt>97%</dt>
+                  <dd>of each tax sale goes to the token&apos;s vault</dd>
+                </div>
+                <div className="white">
+                  <dt>3%</dt>
+                  <dd>goes to the platform</dd>
+                </div>
+              </dl>
             </div>
             <dl className="money">
-              <div>
+              <div className="green">
                 <dt>Each tax sale</dt>
                 <dd className="figure">97 / 3</dd>
                 <dd>97% of the USDC goes to the token&apos;s vault. 3% goes to the platform.</dd>
               </div>
-              <div>
+              <div className="blue">
                 <dt>Redemption</dt>
                 <dd className="figure">pro rata − 3%</dd>
                 <dd>
@@ -199,7 +318,7 @@ export default function LandingPage() {
                   with the remaining holders.
                 </dd>
               </div>
-              <div>
+              <div className="green">
                 <dt>Pool swap fees</dt>
                 <dd className="figure">→ vault</dd>
                 <dd>Fees earned by the token&apos;s pool also flow to its vault.</dd>
@@ -208,11 +327,11 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="block risk" aria-labelledby="risk-title">
+        <section className="block risk" id="risks" aria-labelledby="risk-title">
           <div className="wrap">
             <p className="label">The risks, plainly</p>
             <h2 id="risk-title">You can lose everything you put in.</h2>
-            <ul className="points">
+            <ul className="risk-list">
               {RISKS.map((risk) => (
                 <li key={risk.title}>
                   <h3>{risk.title}</h3>
